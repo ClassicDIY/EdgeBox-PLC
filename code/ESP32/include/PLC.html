@@ -1,0 +1,129 @@
+#pragma once
+
+const char home_html[] PROGMEM = R"rawliteral(
+	<!DOCTYPE html><html lang=\"en\">
+	<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, user-scalable=no\"/>
+	<title>{n}</title>
+
+	<script>
+
+		function initWebSocket() {
+		  const socket = new WebSocket('ws://' + window.location.hostname + '/ws_home');
+		  socket.onmessage = function(event) {
+				const gpioValues = JSON.parse(event.data);
+				for (const [key, value] of Object.entries(gpioValues)) {
+					// console.log(`Pin: ${key}, State: ${value}`);
+					const el = document.getElementById(`${key}`);
+					if (el) {
+						const isNumeric = !isNaN(`${value}`);
+						if (isNumeric) {
+							el.innerText = `${key}: ${value}`;
+							el.style.backgroundColor = 'yellow';
+						} else {
+							if (`${value}` === `High` || `${value}` === `On`) {
+								el.style.backgroundColor = 'green';
+							} else {
+								el.style.backgroundColor = 'red';
+							}
+						}
+					}
+				}
+			};
+
+			socket.onerror = function(error) {
+      			console.error('WebSocket error:', error);
+    		};
+
+			window.addEventListener('beforeunload', function() {
+				if (socket) {
+					socket.close();
+				}
+			});
+		}
+
+		window.onload = function() {
+		  initWebSocket();
+		}
+
+	</script>
+	</head>
+	
+    <style>
+	    .container {
+            display: flex;
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+        }
+        .form-group {
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            height: 100%; 
+            width:300px;
+        }
+
+        .fs {
+            display: inline-block;
+            border-radius:0.3rem;
+            margin: 0px;
+            width:100%; 
+        }
+        .fld {
+            color: #000080;
+            clear: both;
+            display: flex;
+            text-align: left; /* Align text and inputs properly */
+        }
+        .box {
+            width: 120px;
+            height: 25px;
+            margin: 5px;
+			background-color:grey;
+			display: inline-flex; /* Changed to inline-flex to allow the use of Flexbox */
+			align-items: center;  /* Vertically center the content */
+			justify-content: center; /* Horizontally center the content */
+			border: 1px solid #000; /* Added a border for better visibility */
+        }
+		body{text-align: center;font-family:verdana;} 
+    </style>
+	<body>
+	<h2>{n}</h2>
+	<div style='font-size: .6em;'>Firmware config version '{v}'</div>
+	<hr>
+	
+	<div class="container">
+    <div class="form-group">
+    <div id="boxes-container">
+		<fieldset class="fs"><legend>Digital Inputs</legend>
+		{digitalInputs}
+		</fieldset>
+		<fieldset class="fs"><legend>Analog Inputs</legend>
+		{analogInputs}
+		</fieldset>
+		<fieldset class="fs"><legend>Digital Outputs</legend>
+		{digitalOutputs}
+		</fieldset>
+    </div>
+	<div>
+	<p><a href='settings' onclick="javascript:event.target.port={cp}" >View Current Settings</a></p>
+	</div></div></div></body></html>
+	)rawliteral";
+
+	const char app_settings_fields[] PROGMEM = R"rawliteral(
+    
+	<fieldset id="app" class="fs"><legend>Application</legend>
+		<p><div class="fld">Digital Inputs: {digitalInputs}</div></p>
+		<p><div class="fld">Analog Inputs: {analogInputs}</div></p>
+	</fieldset>
+
+	)rawliteral";
+
+	const char app_config_fields[] PROGMEM = R"rawliteral(
+
+	<fieldset id="app" class="fs"><legend>Application</legend>
+		<p><div class="fld"><label for="digitalInputs">Digital Inputs</label><input type="number" id="digitalInputs" name="digitalInputs" value="{digitalInputs}" step="1" min="0" max="12" ></div></p>
+		<p><div class="fld"><label for="analogInputs">Analog Inputs</label><input type="number" id="analogInputs" name="analogInputs" value="{analogInputs}" step="1" min="0" max="4"></div></p>
+	</fieldset>
+
+	)rawliteral";
