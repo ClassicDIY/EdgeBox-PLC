@@ -32,7 +32,7 @@ void setup()
 	  Serial.printf("Heap Size: %d KB\n", ESP.getHeapSize() / 1024);
 	  Serial.printf("Free Heap: %d KB\n", ESP.getFreeHeap() / 1024);
 
-	  
+
 	Wire.begin(SDA, SCL);
 	if (!ads.begin(0x48, &Wire))
 	{
@@ -64,9 +64,5 @@ void setup()
 void loop()
 {
 	_plc.Process();
-	if (WiFi.isConnected())
-	{
-		_plc.Monitor();
-	}
 	esp_task_wdt_reset(); // feed watchdog
 }

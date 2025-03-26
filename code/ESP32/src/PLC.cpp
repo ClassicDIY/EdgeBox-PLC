@@ -288,55 +288,55 @@ namespace ESP_PLC
 		_asyncServer.begin();
 	}
 
-	void PLC::Monitor()
-	{
-		JsonDocument doc;
-		doc.clear();
-		for (int i = 0; i < _digitalInputs; i++)
-		{
-			doc[_DigitalSensors[i].Pin()] = _DigitalSensors[i].Level() ? "High" : "Low";
-		}
-		for (int i = 0; i < _analogInputs; i++)
-		{
-			doc[_AnalogSensors[i].Channel()] = _AnalogSensors[i].Level();
-		}
-		for (int i = 0; i < DO_PINS; i++)
-		{
-			doc[_Coils[i].Pin()] = _Coils[i].Level() ? "On" : "Off";
-		}
-		String s;
-		serializeJson(doc, s);
-		DeserializationError err = deserializeJson(doc, s);
-		if (err)
-		{
-			loge("deserializeJson() failed: %s", err.c_str());
-		}
-		if (_lastMessagePublished == s) // anything changed?
-		{
-			return;
-		}
-		if (_lastPublishTimeStamp < millis()) // limit publish rate
-		{
-
-			_iot.Online();
-			_iot.Publish("readings", s.c_str(), false);
-			_lastMessagePublished = s;
-			_lastPublishTimeStamp = millis() + MQTT_PUBLISH_RATE_LIMIT;
-			_webSocket.textAll(s);
-		}
-	}
 	void PLC::Process()
 	{
 		_iot.Run();
 		unsigned long now = millis();
-		if (now - _lastHeap >= 2000)
+		if (now - _lastHeap >= WS_CLIENT_CLEANUP)
 		{
 			_lastHeap = now;
 			// cleanup disconnected clients or too many clients
 			_webSocket.cleanupClients();
 		}
-		return;
+		if (_iot.getNetworkState() == OnLine)
+		{
+			JsonDocument doc;
+			doc.clear();
+			for (int i = 0; i < _digitalInputs; i++)
+			{
+				doc[_DigitalSensors[i].Pin()] = _DigitalSensors[i].Level() ? "High" : "Low";
+			}
+			for (int i = 0; i < _analogInputs; i++)
+			{
+				doc[_AnalogSensors[i].Channel()] = _AnalogSensors[i].Level();
+			}
+			for (int i = 0; i < DO_PINS; i++)
+			{
+				doc[_Coils[i].Pin()] = _Coils[i].Level() ? "On" : "Off";
+			}
+			String s;
+			serializeJson(doc, s);
+			DeserializationError err = deserializeJson(doc, s);
+			if (err)
+			{
+				loge("deserializeJson() failed: %s", err.c_str());
+			}
+			if (_lastMessagePublished == s) // anything changed?
+			{
+				return;
+			}
+			if (_lastPublishTimeStamp < millis()) // limit publish rate
+			{
+				_iot.Online();
+				_iot.Publish("readings", s.c_str(), false);
+				_lastMessagePublished = s;
+				_lastPublishTimeStamp = millis() + MQTT_PUBLISH_RATE_LIMIT;
+				_webSocket.textAll(s);
+				logd("Publish readings %s", s.c_str()); 
+			}
+		}
 	}
+
 
 	void PLC::onMqttConnect(bool sessionPresent)
 	{

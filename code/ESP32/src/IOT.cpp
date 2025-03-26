@@ -5,6 +5,7 @@
 #include <ESPmDNS.h>
 #include <SPI.h>
 #include <Ethernet.h>
+#include <ETH.h>
 #include <utility/w5100.h>
 #include "esp_eth_spec.h"
 #include "esp_mac.h"
@@ -19,12 +20,39 @@ namespace ESP_PLC
 	AsyncMqttClient _mqttClient;
 	TimerHandle_t mqttReconnectTimer;
 	static DNSServer _dnsServer;
-	static AsyncWebSocket _webSocket("/ws_iot");
 	static WebLog _webLog;
 	static ModbusServerTCPasync _MBserver;
 	static AsyncAuthenticationMiddleware basicAuth;
 
 
+	void IOT::GoOnline() 
+	{
+		_pwebServer->begin();
+		_webLog.begin(_pwebServer);
+		_OTA.begin(_pwebServer);
+		if (_NetworkStatus != APMode )
+		{
+			MDNS.begin(_AP_SSID.c_str());
+			MDNS.addService("http", "tcp", ASYNC_WEBSERVER_PORT);
+			logd("Active mDNS services: %d", MDNS.queryService("http", "tcp"));
+			xTimerStart(mqttReconnectTimer, 0);
+			this->IOTCB()->onWiFiConnect();
+			if (_useModbus && !_MBserver.isRunning())
+			{
+				_MBserver.start(_modbusPort, 5, 0); // listen for modbus requests
+			}
+			setState(OnLine);
+		}
+	}
+
+	void IOT::GoOffline() 
+	{
+		xTimerStop(mqttReconnectTimer, 0); // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
+		_webLog.end();
+		_dnsServer.stop();
+		MDNS.end();	
+		setState(OffLine);
+	}
 
 	void IOT::Init(IOTCallbackInterface *iotCB, AsyncWebServer *pwebServer)
 	{
@@ -55,19 +83,31 @@ namespace ESP_PLC
 
 			switch (event)
 			{
+				case ARDUINO_EVENT_ETH_CONNECTED:
+				logd("Ethernet Connected!");
+				_NetworkStatus = EthernetMode;
+				GoOnline();
+				break;
+		  
+			  case ARDUINO_EVENT_ETH_GOT_IP:
+			  	logd("Ethernet IP Address: %s", ETH.localIP().toString().c_str());
+				break;
+		  
+			  case ARDUINO_EVENT_ETH_DISCONNECTED:
+			  	logd("Ethernet Disconnected!");
+				_NetworkStatus = NotConnected;
+				GoOffline();
+				break;
+
 			case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
 				logd("AP_STADISCONNECTED");
 				_NetworkStatus = NotConnected;
-				_webSocket.closeAll();
-				_webLog.end();
-				_dnsServer.stop();
+				GoOffline();
 			break;
 			case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
 				logd("AP_STAIPASSIGNED");
 				_NetworkStatus = APMode;
-				_pwebServer->begin();
-				_webLog.begin(_pwebServer);
-				_OTA.begin(_pwebServer);
+				GoOnline();
 			break;
 			case ARDUINO_EVENT_WIFI_STA_GOT_IP:
 				logd("STA_GOT_IP");
@@ -79,28 +119,12 @@ namespace ESP_PLC
 				configTime(0, 0, NTP_SERVER);
 				printLocalTime();
 				_NetworkStatus = WiFiMode;
-				_pwebServer->begin();
-				_webLog.begin(_pwebServer);
-				_OTA.begin(_pwebServer);
-				MDNS.begin(_AP_SSID.c_str());
-				MDNS.addService("http", "tcp", ASYNC_WEBSERVER_PORT);
-				logd("Active mDNS services: %d", MDNS.queryService("http", "tcp"));
-				xTimerStart(mqttReconnectTimer, 0);
-				this->IOTCB()->onWiFiConnect();
-				if (_useModbus && !_MBserver.isRunning())
-				{
-					_MBserver.start(_modbusPort, 5, 0); // listen for modbus requests
-				}
-
+				GoOnline();
 				break;
 			case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
 				logw("STA_DISCONNECTED");
 				_NetworkStatus = NotConnected;
-				xTimerStop(mqttReconnectTimer, 0); // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
-				_webSocket.closeAll();
-				_webLog.end();
-				_dnsServer.stop();
-				MDNS.end();
+				GoOffline();
 				break;
 			default:
 				logd("[WiFi-event] event: %d", event);
@@ -171,34 +195,12 @@ namespace ESP_PLC
 		}
 
 		// generate unique id from mac address NIC segment
-		// uint8_t chipid[6];
-		// esp_efuse_mac_get_default(chipid);
-		// _uniqueId = chipid[3] << 16;
-		// _uniqueId += chipid[4] << 8;
-		// _uniqueId += chipid[5];
+		uint8_t chipid[ETH_ADDR_LEN];
+		esp_efuse_mac_get_default(chipid);
+		_uniqueId = chipid[3] << 16;
+		_uniqueId += chipid[4] << 8;
+		_uniqueId += chipid[5];
 		_lastBootTimeStamp = millis();
-
-		_pwebServer->addHandler(&_webSocket).addMiddleware([this](AsyncWebServerRequest *request, ArMiddlewareNext next)
-														   {
-			// ws.count() is the current count of WS clients: this one is trying to upgrade its HTTP connection
-			if (_webSocket.count() > 1) {
-			  // if we have 2 clients or more, prevent the next one to connect
-			  request->send(503, "text/plain", "Server is busy");
-			} else {
-			  // process next middleware and at the end the handler
-			  next();
-			} });
-		_webSocket.onEvent([this](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len)
-						   {
-			(void)len;
-			if (type == WS_EVT_CONNECT) {
-				client->setCloseClientOnQueueFull(false);
-			} else if (type == WS_EVT_DISCONNECT) {
-				// logi("Home Page Disconnected!");
-			} else if (type == WS_EVT_ERROR) {
-				loge("ws error");
-			} });
-
 		_pwebServer->on("/reboot", [this](AsyncWebServerRequest *request)
 						{ 
 			logd("resetModule");
@@ -345,7 +347,7 @@ namespace ESP_PLC
 	void IOT::Run()
 	{
 		uint32_t now = millis();
-		if (_NetworkStatus == NotConnected && _SSID.length() == 0)
+		if (_networkState == Boot && _SSID.length() == 0)
 		{ // WiFi not setup, see if flasher is trying to send us the SSID/Pw
 			if (Serial.peek() == '{')
 			{
@@ -378,48 +380,23 @@ namespace ESP_PLC
 			{
 				Serial.read(); // discard data
 			}
-			
-			Serial.println("Setup Ethernet");
+			logd("Setup Ethernet");
+			setState(ConnectingEthernet);
 			SPI.begin(SCK, MISO, MOSI, SS);
-			uint8_t base_mac_addr[ETH_ADDR_LEN];
-			esp_efuse_mac_get_default(base_mac_addr);
-			Serial.print("Factory MAC Address: ");
-			for (int i = 0; i < 6; i++) {
-			  Serial.print(base_mac_addr[i], HEX);
-			  if (i < 5) Serial.print(":");
+			if (ETH.begin(ETH_PHY_W5500, 1, 10, 14, 15, SPI) == 0) 
+			{
+			  logw("Failed to configure Ethernet using DHCP");
+			  setState(ApMode); // no Ethernet!, switch to AP mode
 			}
-			Serial.println();
-			uint8_t local_mac_1[ETH_ADDR_LEN];
-			esp_derive_local_mac(local_mac_1, base_mac_addr);
-			Serial.print("Local MAC Address: ");
-			for (int i = 0; i < 6; i++) {
-			  Serial.print(local_mac_1[i], HEX);
-			  if (i < 5) Serial.print(":");
-			}
-			Serial.println();
-		  
-			if (Ethernet.begin(local_mac_1) == 0) {
-			  Serial.println("Failed to configure Ethernet using DHCP");
-			  setState(ApMode);
-			}
-			else {
+			else 
+			{
+				logd("Ethernet succeeded");
 				setState(OnLine);
-				_NetworkStatus = EthernetMode;
-				_pwebServer->begin();
-				_webLog.begin(_pwebServer);
-				_OTA.begin(_pwebServer);
 			}
-			// Print the IP address
-			Serial.print("IP Address: ");
-			Serial.println(Ethernet.localIP());
-			Serial.print("Gateway IP Address: ");
-			Serial.println(Ethernet.gatewayIP());
-			Serial.print("Subnet Mask: ");
-			Serial.println(Ethernet.subnetMask());
 		}
-		if (_networkState == Boot)
-		{ // switch to AP mode for AP_TIMEOUT
-			setState(ApMode);
+		else if (_networkState == Boot) //have SSID, start with wifiAP for AP_TIMEOUT then STA mode 
+		{ 
+			setState(ApMode); // switch to AP mode for AP_TIMEOUT
 		}
 		else if (_networkState == ApMode)
 		{
@@ -428,13 +405,13 @@ namespace ESP_PLC
 				if (now > (_waitInAPTimeStamp + AP_TIMEOUT))
 				{ // switch to WiFi after waiting for AP connection
 					logd("Connecting to WiFi : %s", _SSID.c_str());
-					setState(Connecting);
+					setState(ConnectingWifi);
 				}
 			}
 			_dnsServer.processNextRequest();
 			_webLog.process();
 		}
-		else if (_networkState == Connecting)
+		else if (_networkState == ConnectingWifi)
 		{
 			if (WiFi.status() != WL_CONNECTED)
 			{
@@ -489,7 +466,7 @@ namespace ESP_PLC
 			WiFi.mode(WIFI_OFF);
 			break;
 		case ApMode:
-			if ((oldState == Connecting) || (oldState == OnLine))
+			if ((oldState == ConnectingWifi) || (oldState == OnLine))
 			{
 				WiFi.disconnect(true);
 			}
@@ -504,11 +481,15 @@ namespace ESP_PLC
 			}
 			_waitInAPTimeStamp = millis();
 			break;
-		case Connecting:
+		case ConnectingWifi:
 			_wifiConnectionStart = millis();
 			WiFi.setHostname(_AP_SSID.c_str());
 			WiFi.mode(WIFI_STA);
 			WiFi.begin(_SSID, _WiFi_Password);
+			break;
+
+		case ConnectingEthernet:
+
 			break;
 		case OnLine:
 			break;

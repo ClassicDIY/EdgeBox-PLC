@@ -21,7 +21,6 @@ namespace ESP_PLC
 		PLC() {};
 		void setup();
 		void Process();
-		void Monitor();
 		void onMqttConnect(bool sessionPresent);
 		void onMqttMessage(char* topic, JsonDocument& doc);
 		void onWiFiConnect();

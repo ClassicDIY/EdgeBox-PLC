@@ -35,6 +35,7 @@ namespace ESP_PLC
         u_int getUniqueId() { return _uniqueId; };
         std::string getThingName();
         void Online();
+        NetworkState getNetworkState() { return _networkState; }
         IOTCallbackInterface *IOTCB() { return _iotCB; }
         void registerMBWorkers(FunctionCode fc, MBSworker worker);
 
@@ -66,6 +67,8 @@ namespace ESP_PLC
         unsigned long _wifiConnectionStart = 0;
         char _willTopic[STR_LEN];
         char _rootTopicPrefix[STR_LEN];
+        void GoOnline();
+        void GoOffline();
         void saveSettings();
         void loadSettings();
         void SendNetworkSettings(AsyncWebServerRequest *request);

@@ -15,7 +15,8 @@ namespace ESP_PLC
     {
       Boot,
       ApMode,
-      Connecting,
+      ConnectingWifi,
+      ConnectingEthernet,
       OnLine,
       OffLine
     };
