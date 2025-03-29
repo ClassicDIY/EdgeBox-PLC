@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <esp_task_wdt.h>
+// #include <esp_task_wdt.h>
 #include <esp_system.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
@@ -20,18 +20,16 @@ void setup()
 {
 	Serial.begin(115200);
 	while (!Serial) {}
-
-	  // Log ESP32-S3 specifications
-	  Serial.println("ESP32-S3 Specifications:");
-	  Serial.printf("Chip Model: %s\n", ESP.getChipModel());
-	  Serial.printf("Chip Revision: %d\n", ESP.getChipRevision());
-	  Serial.printf("Number of CPU Cores: %d\n", ESP.getChipCores());
-	  Serial.printf("CPU Frequency: %d MHz\n", ESP.getCpuFreqMHz());
-	  Serial.printf("Flash Memory Size: %d MB\n", ESP.getFlashChipSize() / (1024 * 1024));
-	  Serial.printf("Flash Frequency: %d MHz\n", ESP.getFlashChipSpeed() / 1000000);
-	  Serial.printf("Heap Size: %d KB\n", ESP.getHeapSize() / 1024);
-	  Serial.printf("Free Heap: %d KB\n", ESP.getFreeHeap() / 1024);
-
+	logd("------------ESP32-S3 specifications ---------------");
+	  logd("Chip Model: %s", ESP.getChipModel());
+	  logd("Chip Revision: %d", ESP.getChipRevision());
+	  logd("Number of CPU Cores: %d", ESP.getChipCores());
+	  logd("CPU Frequency: %d MHz", ESP.getCpuFreqMHz());
+	  logd("Flash Memory Size: %d MB", ESP.getFlashChipSize() / (1024 * 1024));
+	  logd("Flash Frequency: %d MHz", ESP.getFlashChipSpeed() / 1000000);
+	  logd("Heap Size: %d KB", ESP.getHeapSize() / 1024);
+	  logd("Free Heap: %d KB", ESP.getFreeHeap() / 1024);
+	  logd("------------ESP32-S3 specifications ---------------");
 
 	Wire.begin(SDA, SCL);
 	if (!ads.begin(0x48, &Wire))
@@ -51,18 +49,10 @@ void setup()
     logi("Date Time: %s", now.timestamp().c_str());
 
 	_plc.setup();
-	const esp_task_wdt_config_t wdtConfig = {
-		.timeout_ms = WATCHDOG_TIMEOUT * 1000,
-		.idle_core_mask = 0, // 0 = both cores
-		.trigger_panic = true
-	};
-	esp_task_wdt_init(&wdtConfig); 
-	esp_task_wdt_add(NULL); // Add the current task to the watchdog timer
 	logd("Setup Done");
 }
 
 void loop()
 {
 	_plc.Process();
-	esp_task_wdt_reset(); // feed watchdog
 }

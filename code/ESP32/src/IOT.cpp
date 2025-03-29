@@ -5,10 +5,6 @@
 #include <ESPmDNS.h>
 #include <SPI.h>
 #include <Ethernet.h>
-#include <ETH.h>
-#include <utility/w5100.h>
-#include "esp_eth_spec.h"
-#include "esp_mac.h"
 #include "Log.h"
 #include "WebLog.h"
 #include "IOT.h"
@@ -90,7 +86,7 @@ namespace ESP_PLC
 				break;
 		  
 			  case ARDUINO_EVENT_ETH_GOT_IP:
-			  	logd("Ethernet IP Address: %s", ETH.localIP().toString().c_str());
+			  	logd("Ethernet IP Address: %s", Ethernet.localIP().toString().c_str());
 				break;
 		  
 			  case ARDUINO_EVENT_ETH_DISCONNECTED:
@@ -195,7 +191,7 @@ namespace ESP_PLC
 		}
 
 		// generate unique id from mac address NIC segment
-		uint8_t chipid[ETH_ADDR_LEN];
+		uint8_t chipid[6];
 		esp_efuse_mac_get_default(chipid);
 		_uniqueId = chipid[3] << 16;
 		_uniqueId += chipid[4] << 8;
@@ -381,9 +377,19 @@ namespace ESP_PLC
 				Serial.read(); // discard data
 			}
 			logd("Setup Ethernet");
+			// Get the WiFi MAC address
+			uint8_t wifiMac[6];
+			WiFi.macAddress(wifiMac);
+			logd("WiFi MAC: %02X:%02X:%02X:%02X:%02X:%02X", wifiMac[0], wifiMac[1], wifiMac[2], wifiMac[3], wifiMac[4], wifiMac[5]);
+			// Derive Ethernet MAC address from the Wifi mac
+			uint8_t ethernetMac[6];
+			memcpy(ethernetMac, wifiMac, 6);
+			ethernetMac[0]++; // Simple derivation by incrementing first byte
+			logd("Ethernet MAC: %02X:%02X:%02X:%02X:%02X:%02X", ethernetMac[0], ethernetMac[1], ethernetMac[2], ethernetMac[3], ethernetMac[4], ethernetMac[5]);
 			setState(ConnectingEthernet);
 			SPI.begin(SCK, MISO, MOSI, SS);
-			if (ETH.begin(ETH_PHY_W5500, 1, 10, 14, 15, SPI) == 0) 
+			Ethernet.init(SS);  // Set the CS pin for W5500
+			if (Ethernet.begin(ethernetMac) == 0) 
 			{
 			  logw("Failed to configure Ethernet using DHCP");
 			  setState(ApMode); // no Ethernet!, switch to AP mode
