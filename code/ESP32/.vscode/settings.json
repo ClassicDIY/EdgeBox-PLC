@@ -12,7 +12,8 @@
         "string_view": "cpp",
         "initializer_list": "cpp",
         "span": "cpp",
-        "regex": "cpp"
+        "regex": "cpp",
+        "*.tcc": "cpp"
     },
     "idf.portWin": "COM21",
     "idf.customExtraVars": {

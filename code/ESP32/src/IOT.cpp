@@ -5,14 +5,22 @@
 #include <ESPmDNS.h>
 #include <SPI.h>
 #include <Ethernet.h>
+#include <esp_netif.h>
+#include <esp_eth.h>
+#include <esp_event.h>
 #include "Log.h"
 #include "WebLog.h"
 #include "IOT.h"
 #include "IOT.html"
 #include "HelperFunctions.h"
+#include "EdgeBoxNet.h"
 
 namespace ESP_PLC
 {
+	IPAddress server(96, 7, 128, 175); // Example: IP for example.com
+	AsyncWebServer async_server(80);
+	EdgeBoxNet _network;
+
 	AsyncMqttClient _mqttClient;
 	TimerHandle_t mqttReconnectTimer;
 	static DNSServer _dnsServer;
@@ -20,13 +28,12 @@ namespace ESP_PLC
 	static ModbusServerTCPasync _MBserver;
 	static AsyncAuthenticationMiddleware basicAuth;
 
-
-	void IOT::GoOnline() 
+	void IOT::GoOnline()
 	{
 		_pwebServer->begin();
 		_webLog.begin(_pwebServer);
 		_OTA.begin(_pwebServer);
-		if (_NetworkStatus != APMode )
+		if (_NetworkStatus != APMode)
 		{
 			MDNS.begin(_AP_SSID.c_str());
 			MDNS.addService("http", "tcp", ASYNC_WEBSERVER_PORT);
@@ -41,12 +48,12 @@ namespace ESP_PLC
 		}
 	}
 
-	void IOT::GoOffline() 
+	void IOT::GoOffline()
 	{
 		xTimerStop(mqttReconnectTimer, 0); // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
 		_webLog.end();
 		_dnsServer.stop();
-		MDNS.end();	
+		MDNS.end();
 		setState(OffLine);
 	}
 
@@ -55,9 +62,9 @@ namespace ESP_PLC
 		_iotCB = iotCB;
 		_pwebServer = pwebServer;
 		pinMode(FACTORY_RESET_PIN, INPUT_PULLUP);
-		#ifdef WIFI_STATUS_PIN
+#ifdef WIFI_STATUS_PIN
 		pinMode(WIFI_STATUS_PIN, OUTPUT);
-		#endif
+#endif
 		EEPROM.begin(EEPROM_SIZE);
 		if (digitalRead(FACTORY_RESET_PIN) == LOW)
 		{
@@ -71,7 +78,7 @@ namespace ESP_PLC
 			loadSettings();
 		}
 		mqttReconnectTimer = xTimerCreate("mqttTimer", pdMS_TO_TICKS(5000), pdFALSE, this, mqttReconnectTimerCF);
-		
+
 		WiFi.onEvent([this](WiFiEvent_t event, WiFiEventInfo_t info)
 					 {
 			String s;
@@ -206,7 +213,7 @@ namespace ESP_PLC
 			esp_restart(); });
 
 		_pwebServer->onNotFound([this](AsyncWebServerRequest *request)
-		{
+								{
 			logd("Redirecting from: %s", request->url().c_str());
 			String page = redirect_html;
 			page.replace("{n}", _SSID);
@@ -222,7 +229,7 @@ namespace ESP_PLC
 		basicAuth.setAuthType(AsyncAuthType::AUTH_BASIC);
 		basicAuth.generateHash();
 		_pwebServer->on("/network_config", HTTP_GET, [this](AsyncWebServerRequest *request)
-		{
+						{
 			logd("config");
 			String fields = network_config_fields;
 			fields.replace("{n}", _AP_SSID);
@@ -248,10 +255,11 @@ namespace ESP_PLC
 			String apply_button = network_config_apply_button;
 			page += apply_button;
 			page += network_config_links;
-			request->send(200, "text/html", page); }).addMiddleware(&basicAuth);
+			request->send(200, "text/html", page); })
+			.addMiddleware(&basicAuth);
 
 		_pwebServer->on("/submit", HTTP_POST, [this](AsyncWebServerRequest *request)
-		{
+						{
 			logd("submit");
 			if (request->hasParam("AP_SSID", true)) {
 				_AP_SSID = request->getParam("AP_SSID", true)->value().c_str();
@@ -376,38 +384,16 @@ namespace ESP_PLC
 			{
 				Serial.read(); // discard data
 			}
-			logd("Setup Ethernet");
-			// Get the WiFi MAC address
-			uint8_t wifiMac[6];
-			WiFi.macAddress(wifiMac);
-			logd("WiFi MAC: %02X:%02X:%02X:%02X:%02X:%02X", wifiMac[0], wifiMac[1], wifiMac[2], wifiMac[3], wifiMac[4], wifiMac[5]);
-			// Derive Ethernet MAC address from the Wifi mac
-			uint8_t ethernetMac[6];
-			memcpy(ethernetMac, wifiMac, 6);
-			ethernetMac[0]++; // Simple derivation by incrementing first byte
-			logd("Ethernet MAC: %02X:%02X:%02X:%02X:%02X:%02X", ethernetMac[0], ethernetMac[1], ethernetMac[2], ethernetMac[3], ethernetMac[4], ethernetMac[5]);
-			setState(ConnectingEthernet);
-			SPI.begin(SCK, MISO, MOSI, SS);
-			Ethernet.init(SS);  // Set the CS pin for W5500
-			if (Ethernet.begin(ethernetMac) == 0) 
-			{
-			  logw("Failed to configure Ethernet using DHCP");
-			  setState(ApMode); // no Ethernet!, switch to AP mode
-			}
-			else 
-			{
-				logd("Ethernet succeeded");
-				setState(OnLine);
-			}
+			setState(ConnectingEthernet); // try ethernet
 		}
-		else if (_networkState == Boot) //have SSID, start with wifiAP for AP_TIMEOUT then STA mode 
-		{ 
+		else if (_networkState == Boot) // have SSID, start with wifiAP for AP_TIMEOUT then STA mode
+		{
 			setState(ApMode); // switch to AP mode for AP_TIMEOUT
 		}
 		else if (_networkState == ApMode)
 		{
 			if (_NetworkStatus == NotConnected && _SSID.length() > 0) // wifi configured and no AP connections
-			{ 
+			{
 				if (now > (_waitInAPTimeStamp + AP_TIMEOUT))
 				{ // switch to WiFi after waiting for AP connection
 					logd("Connecting to WiFi : %s", _SSID.c_str());
@@ -440,7 +426,7 @@ namespace ESP_PLC
 		{
 			_webLog.process();
 		}
-		#ifdef WIFI_STATUS_PIN
+#ifdef WIFI_STATUS_PIN
 		// handle blink led, fast : NotConnected slow: AP connected On: Station connected
 		if (_NetworkStatus != WiFiMode)
 		{
@@ -457,7 +443,7 @@ namespace ESP_PLC
 		{
 			digitalWrite(WIFI_STATUS_PIN, HIGH);
 		}
-		#endif
+#endif
 		return;
 	}
 
@@ -477,7 +463,7 @@ namespace ESP_PLC
 				WiFi.disconnect(true);
 			}
 			WiFi.mode(WIFI_AP);
-			if (WiFi.softAP(_AP_SSID, _AP_Password)) 
+			if (WiFi.softAP(_AP_SSID, _AP_Password))
 			{
 				IPAddress IP = WiFi.softAPIP();
 				logi("WiFi AP SSID: %s PW: %s", _AP_SSID.c_str(), _AP_Password.c_str());
@@ -495,7 +481,15 @@ namespace ESP_PLC
 			break;
 
 		case ConnectingEthernet:
-
+			logd("SetupEthernet");
+			if (_network.Connect() == ESP_OK)
+			{
+				logd("Ethernet succeeded");
+			}
+			else
+			{
+				loge("Failed to configure Ethernet");
+			}
 			break;
 		case OnLine:
 			break;
@@ -565,7 +559,7 @@ namespace ESP_PLC
 		String jsonString;
 		serializeJson(doc, jsonString);
 		// Serial.println(jsonString.c_str());
-		logd ("_useMQTT: %d", _useMQTT);
+		logd("_useMQTT: %d", _useMQTT);
 		for (int i = 0; i < jsonString.length(); ++i)
 		{
 			EEPROM.write(i, jsonString[i]);
