@@ -7,10 +7,10 @@
 #include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
 #include <ModbusServerTCPasync.h>
+#include "mqtt_client.h"
 #include "time.h"
 #include <sstream>
 #include <string>
-#include <AsyncMqttClient.h>
 #include "Defines.h"
 #include "Enumerations.h"
 #include "OTA.h"
@@ -69,7 +69,7 @@ namespace EDGEBOX
         unsigned long _wifiConnectionStart = 0;
         char _willTopic[STR_LEN*2];
         char _rootTopicPrefix[STR_LEN];
-        esp_mqtt_client_handle_t _mqtt_client_handle;
+        esp_mqtt_client_handle_t _mqtt_client_handle = 0;
         void GoOffline();
         void saveSettings();
         void loadSettings();

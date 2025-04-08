@@ -8,7 +8,6 @@
 #include <esp_netif.h>
 #include <esp_eth.h>
 #include <esp_event.h>
-#include "mqtt_client.h"
 #include "Log.h"
 #include "WebLog.h"
 #include "IOT.h"
@@ -20,7 +19,6 @@ namespace EDGEBOX
 {
 	EdgeBoxNet _network;
 
-	AsyncMqttClient _mqttClient;
 	TimerHandle_t mqttReconnectTimer;
 	static DNSServer _dnsServer;
 	static WebLog _webLog;
@@ -268,10 +266,9 @@ namespace EDGEBOX
 			logi("Connected to MQTT.");
 			char buf[128];
 			sprintf(buf, "%s/cmnd/#", _rootTopicPrefix);
-			_mqttClient.subscribe(buf, 0);
+			esp_mqtt_client_subscribe(client, buf, 0);
 			IOTCB()->onMqttConnect();
 			msg_id = esp_mqtt_client_publish(client, _willTopic, "Offline", 0, 1, 0);
-			// _mqttClient.publish(_willTopic, 0, true, "Offline"); // toggle online in run loop
 			break;
 		case MQTT_EVENT_DISCONNECTED:
 			logw("Disconnected from MQTT");
@@ -340,6 +337,9 @@ namespace EDGEBOX
 				logd("_willTopic: %s", _willTopic);
 				esp_mqtt_client_config_t mqtt_cfg = {};
 				mqtt_cfg.host = _mqttServer.c_str();
+				mqtt_cfg.port = _mqttPort;
+				mqtt_cfg.username = _mqttUserName.c_str();
+				mqtt_cfg.password = _mqttUserPassword.c_str();
 				mqtt_cfg.client_id = _AP_SSID.c_str();
 				mqtt_cfg.lwt_topic = _willTopic;
 				mqtt_cfg.lwt_retain = 1;
@@ -596,11 +596,11 @@ namespace EDGEBOX
 	boolean IOT::Publish(const char *subtopic, const char *value, boolean retained)
 	{
 		boolean rVal = false;
-		if (_mqttClient.connected())
+		if (_mqtt_client_handle != 0)
 		{
 			char buf[128];
 			sprintf(buf, "%s/stat/%s", _rootTopicPrefix, subtopic);
-			rVal = _mqttClient.publish(buf, 0, retained, value) > 0;
+			rVal = (esp_mqtt_client_publish(_mqtt_client_handle, buf, value, strlen(value), 1, retained) != -1);
 			if (!rVal)
 			{
 				loge("**** Failed to publish MQTT message");
@@ -619,11 +619,11 @@ namespace EDGEBOX
 	boolean IOT::PublishMessage(const char *topic, JsonDocument &payload, boolean retained)
 	{
 		boolean rVal = false;
-		if (_mqttClient.connected())
+		if (_mqtt_client_handle != 0)
 		{
 			String s;
 			serializeJson(payload, s);
-			rVal = _mqttClient.publish(topic, 0, retained, s.c_str(), s.length()) > 0;
+			rVal = (esp_mqtt_client_publish(_mqtt_client_handle, topic,  s.c_str(), s.length(), 0, retained) != -1);
 			if (!rVal)
 			{
 				loge("**** Configuration payload exceeds MAX MQTT Packet Size, %d [%s] topic: %s", s.length(), s.c_str(), topic);
@@ -635,7 +635,7 @@ namespace EDGEBOX
 	boolean IOT::PublishHADiscovery(JsonDocument &payload)
 	{
 		boolean rVal = false;
-		if (_mqttClient.connected())
+		if (_mqtt_client_handle != 0)
 		{
 			char topic[64];
 			sprintf(topic, "%s/device/%X/config", HOME_ASSISTANT_PREFIX, getUniqueId());
@@ -660,8 +660,10 @@ namespace EDGEBOX
 	{
 		if (!_publishedOnline)
 		{
-			esp_mqtt_client_publish(_mqtt_client_handle, _willTopic, "Online", 0, 1, 1);
-			// _publishedOnline = _mqttClient.publish(_willTopic, 0, true, "Online");
+			if (esp_mqtt_client_publish(_mqtt_client_handle, _willTopic, "Online", 0, 1, 1) != -1)
+			{
+				_publishedOnline = true;
+			}
 		}
 	}
 
