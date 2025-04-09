@@ -45,12 +45,13 @@ namespace EDGEBOX
         OTA _OTA = OTA();
         AsyncWebServer *_pwebServer;
         NetworkState _networkState = Boot;
-        NetworkStatus _NetworkStatus;
+        NetworkSelection _NetworkSelection = NotConnected;
         bool _blinkStateOn = false;
         String _AP_SSID = TAG;
         String _AP_Password = DEFAULT_AP_PASSWORD;
         String _SSID;
         String _WiFi_Password;
+        String _APN;
         bool _useMQTT = false;
         String _mqttServer;
         int16_t _mqttPort = 1883;
@@ -77,6 +78,11 @@ namespace EDGEBOX
         void ConnectToMQTTServer();
         void HandleMQTT(int32_t event_id, void *event_data);
         void setState(NetworkState newState);
+        void wakeup_modem(void);
+        void start_network(void);
+        esp_err_t ConnectModem();
+        esp_err_t ConnectEthernet();
+        void HandleIPEvent(int32_t event_id, void *event_data);
         static void mqttReconnectTimerCF(TimerHandle_t xTimer)
         {
             // Retrieve the instance of the class (stored as the timer's ID)
@@ -92,6 +98,13 @@ namespace EDGEBOX
             if (instance != nullptr)
             {
                 instance->HandleMQTT(event_id, event_data);
+            }
+        }
+        static void on_ip_event(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+        {
+            IOT* instance = static_cast<IOT*>(arg);
+            if (instance) {
+                instance->HandleIPEvent(event_id, event_data);
             }
         }
     };

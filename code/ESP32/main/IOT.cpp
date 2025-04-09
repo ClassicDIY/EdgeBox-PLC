@@ -1,4 +1,3 @@
-
 #include <sys/time.h>
 #include <thread>
 #include <chrono>
@@ -8,17 +7,20 @@
 #include <esp_netif.h>
 #include <esp_eth.h>
 #include <esp_event.h>
+#include "esp_mac.h"
+#include "esp_eth_mac.h"
+#include "esp_netif_ppp.h"
+#include "driver/spi_master.h"
+#include "network_dce.h"
 #include "Log.h"
 #include "WebLog.h"
 #include "IOT.h"
 #include "IOT.html"
 #include "HelperFunctions.h"
-#include "EdgeBoxNet.h"
+
 
 namespace EDGEBOX
 {
-	EdgeBoxNet _network;
-
 	TimerHandle_t mqttReconnectTimer;
 	static DNSServer _dnsServer;
 	static WebLog _webLog;
@@ -31,13 +33,15 @@ namespace EDGEBOX
 		_pwebServer->begin();
 		_webLog.begin(_pwebServer);
 		_OTA.begin(_pwebServer);
-		if (_NetworkStatus != APMode)
+		if (_NetworkSelection != APMode)
 		{
-			// MDNS.begin(_AP_SSID.c_str());
-			// MDNS.addService("http", "tcp", ASYNC_WEBSERVER_PORT);
-			// logd("Active mDNS services: %d", MDNS.queryService("http", "tcp"));
-			// xTimerStart(mqttReconnectTimer, 0);
-			this->IOTCB()->onWiFiConnect();
+			if (_NetworkSelection == EthernetMode || _NetworkSelection == WiFiMode)
+			{
+				MDNS.begin(_AP_SSID.c_str());
+				MDNS.addService("http", "tcp", ASYNC_WEBSERVER_PORT);
+				logd("Active mDNS services: %d", MDNS.queryService("http", "tcp"));
+			}
+			this->IOTCB()->onNetworkConnect();
 			if (_useModbus && !_MBserver.isRunning())
 			{
 				_MBserver.start(_modbusPort, 5, 0); // listen for modbus requests
@@ -86,12 +90,10 @@ namespace EDGEBOX
 			{
 			case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
 				logd("AP_STADISCONNECTED");
-				_NetworkStatus = NotConnected;
 				GoOffline();
 			break;
 			case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
 				logd("AP_STAIPASSIGNED");
-				_NetworkStatus = APMode;
 				GoOnline();
 			break;
 			case ARDUINO_EVENT_WIFI_STA_GOT_IP:
@@ -103,12 +105,10 @@ namespace EDGEBOX
 				Serial.printf(s.c_str()); // send json to flash tool
 				configTime(0, 0, NTP_SERVER);
 				printLocalTime();
-				_NetworkStatus = WiFiMode;
 				GoOnline();
 				break;
 			case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
 				logw("STA_DISCONNECTED");
-				_NetworkStatus = NotConnected;
 				GoOffline();
 				break;
 			default:
@@ -147,13 +147,18 @@ namespace EDGEBOX
 		basicAuth.setAuthType(AsyncAuthType::AUTH_BASIC);
 		basicAuth.generateHash();
 		_pwebServer->on("/network_config", HTTP_GET, [this](AsyncWebServerRequest *request)
-						{
+		{
 			logd("config");
 			String fields = network_config_fields;
 			fields.replace("{n}", _AP_SSID);
 			fields.replace("{v}", CONFIG_VERSION);
 			fields.replace("{AP_SSID}", _AP_SSID);
 			fields.replace("{AP_Pw}", _AP_Password);
+
+			fields.replace("{WIFI}", _NetworkSelection == WiFiMode ? "selected" : "");
+			fields.replace("{ETH}", _NetworkSelection == EthernetMode ? "selected" : "");
+			fields.replace("{4G}", _NetworkSelection == ModemMode ? "selected" : "");
+
 			fields.replace("{SSID}", _SSID);
 			fields.replace("{WiFi_Pw}", _WiFi_Password);
 			fields.replace("{mqttchecked}", _useMQTT ? "checked" : "unchecked");
@@ -173,8 +178,8 @@ namespace EDGEBOX
 			String apply_button = network_config_apply_button;
 			page += apply_button;
 			page += network_config_links;
-			request->send(200, "text/html", page); })
-			.addMiddleware(&basicAuth);
+			request->send(200, "text/html", page); 
+		}).addMiddleware(&basicAuth);
 
 		_pwebServer->on("/submit", HTTP_POST, [this](AsyncWebServerRequest *request)
 						{
@@ -187,6 +192,10 @@ namespace EDGEBOX
 			}
 			if (request->hasParam("SSID", true)) {
 				_SSID = request->getParam("SSID", true)->value().c_str();
+			}
+			if (request->hasParam("networkSelector", true)) {
+				String sel =  request->getParam("networkSelector", true)->value();
+				_NetworkSelection = sel == "wifi" ? WiFiMode : sel == "ethernet" ? EthernetMode : ModemMode;
 			}
 			if (request->hasParam("WiFi_Pw", true)) {
 				_WiFi_Password = request->getParam("WiFi_Pw", true)->value().c_str();
@@ -355,8 +364,8 @@ namespace EDGEBOX
 	void IOT::Run()
 	{
 		uint32_t now = millis();
-		if (_networkState == Boot && _SSID.length() == 0)
-		{ // WiFi not setup, see if flasher is trying to send us the SSID/Pw
+		if (_networkState == Boot && _NetworkSelection == NotConnected)
+		{ // Network not setup?, see if flasher is trying to send us the SSID/Pw
 			if (Serial.peek() == '{')
 			{
 				String s = Serial.readStringUntil('}');
@@ -375,6 +384,7 @@ namespace EDGEBOX
 						logd("Setting ssid: %s", _SSID.c_str());
 						_WiFi_Password = doc["password"].as<String>();
 						logd("Setting password: %s", _WiFi_Password.c_str());
+						_NetworkSelection = WiFiMode;
 						saveSettings();
 						esp_restart();
 					}
@@ -388,21 +398,17 @@ namespace EDGEBOX
 			{
 				Serial.read(); // discard data
 			}
-			setState(ConnectingEthernet); // try ethernet
 		}
-		else if (_networkState == Boot) // have SSID, start with wifiAP for AP_TIMEOUT then STA mode
+		else if (_networkState == Boot) // have network selection, start with wifiAP for AP_TIMEOUT then STA mode
 		{
 			setState(ApMode); // switch to AP mode for AP_TIMEOUT
 		}
 		else if (_networkState == ApMode)
 		{
-			if (_NetworkStatus == NotConnected && _SSID.length() > 0) // wifi configured and no AP connections
-			{
-				if (now > (_waitInAPTimeStamp + AP_TIMEOUT))
-				{ // switch to WiFi after waiting for AP connection
-					logd("Connecting to WiFi : %s", _SSID.c_str());
-					setState(ConnectingWifi);
-				}
+			if (now > (_waitInAPTimeStamp + AP_TIMEOUT)) // switch to selected network after waiting for AP connection timeout
+			{ 
+				logd("Connecting to network: %d", _NetworkSelection);
+				setState(_NetworkSelection == ModemMode ? ConnectingModem : _NetworkSelection == EthernetMode ? ConnectingEthernet : ConnectingWifi);
 			}
 			_dnsServer.processNextRequest();
 			_webLog.process();
@@ -485,8 +491,7 @@ namespace EDGEBOX
 			break;
 
 		case ConnectingEthernet:
-			logd("SetupEthernet");
-			if (_network.ConnectEthernet(this) == ESP_OK)
+			if (ConnectEthernet() == ESP_OK)
 			{
 				logd("Ethernet succeeded");
 			}
@@ -497,8 +502,7 @@ namespace EDGEBOX
 			break;
 
 		case ConnectingModem:
-			logd("SetupEthernet");
-			if (_network.ConnectModem(this) == ESP_OK)
+			if (ConnectModem() == ESP_OK)
 			{
 				logd("Modem succeeded");
 			}
@@ -526,7 +530,7 @@ namespace EDGEBOX
 				break; // Stop at the null terminator
 			jsonString += ch;
 		}
-		// Serial.println(jsonString.c_str());
+		Serial.println(jsonString.c_str());
 		JsonDocument doc;
 		DeserializationError error = deserializeJson(doc, jsonString);
 		if (error)
@@ -540,8 +544,10 @@ namespace EDGEBOX
 			JsonObject iot = doc["iot"].as<JsonObject>();
 			_AP_SSID = iot["AP_SSID"].isNull() ? TAG : iot["AP_SSID"].as<String>();
 			_AP_Password = iot["AP_Pw"].isNull() ? DEFAULT_AP_PASSWORD : iot["AP_Pw"].as<String>();
+			_NetworkSelection = iot["Network"].isNull() ? WiFiMode : iot["Network"].as<NetworkSelection>();
 			_SSID = iot["SSID"].isNull() ? "" : iot["SSID"].as<String>();
 			_WiFi_Password = iot["WiFi_Pw"].isNull() ? "" : iot["WiFi_Pw"].as<String>();
+			_APN = iot["APN"].isNull() ? "" : iot["APN"].as<String>();
 			_useMQTT = iot["useMQTT"].isNull() ? false : iot["useMQTT"].as<bool>();
 			_mqttServer = iot["mqttServer"].isNull() ? "" : iot["mqttServer"].as<String>();
 			_mqttPort = iot["mqttPort"].isNull() ? 1883 : iot["mqttPort"].as<uint16_t>();
@@ -550,7 +556,6 @@ namespace EDGEBOX
 			_useModbus = iot["useModbus"].isNull() ? false : iot["useModbus"].as<bool>();
 			_modbusPort = iot["modbusPort"].isNull() ? 502 : iot["modbusPort"].as<uint16_t>();
 			_modbusID = iot["modbusID"].isNull() ? 1 : iot["modbusID"].as<uint16_t>();
-
 			_iotCB->onLoadSetting(doc);
 		}
 	}
@@ -562,8 +567,10 @@ namespace EDGEBOX
 		iot["version"] = CONFIG_VERSION;
 		iot["AP_SSID"] = _AP_SSID;
 		iot["AP_Pw"] = _AP_Password;
+		iot["Network"] = _NetworkSelection;
 		iot["SSID"] = _SSID;
 		iot["WiFi_Pw"] = _WiFi_Password;
+		iot["APN"] = _APN;
 		iot["useMQTT"] = _useMQTT;
 		iot["mqttServer"] = _mqttServer;
 		iot["mqttPort"] = _mqttPort;
@@ -576,7 +583,6 @@ namespace EDGEBOX
 		String jsonString;
 		serializeJson(doc, jsonString);
 		// Serial.println(jsonString.c_str());
-		logd("_useMQTT: %d", _useMQTT);
 		for (int i = 0; i < jsonString.length(); ++i)
 		{
 			EEPROM.write(i, jsonString[i]);
@@ -623,7 +629,7 @@ namespace EDGEBOX
 		{
 			String s;
 			serializeJson(payload, s);
-			rVal = (esp_mqtt_client_publish(_mqtt_client_handle, topic,  s.c_str(), s.length(), 0, retained) != -1);
+			rVal = (esp_mqtt_client_publish(_mqtt_client_handle, topic, s.c_str(), s.length(), 0, retained) != -1);
 			if (!rVal)
 			{
 				loge("**** Configuration payload exceeds MAX MQTT Packet Size, %d [%s] topic: %s", s.length(), s.c_str(), topic);
@@ -638,7 +644,7 @@ namespace EDGEBOX
 		if (_mqtt_client_handle != 0)
 		{
 			char topic[64];
-			sprintf(topic, "%s/device/%X/config", HOME_ASSISTANT_PREFIX, getUniqueId());
+			sprintf(topic, "%s/device/%s_%X/config", HOME_ASSISTANT_PREFIX, TAG, getUniqueId());
 			rVal = PublishMessage(topic, payload, true);
 		}
 		return rVal;
@@ -665,6 +671,187 @@ namespace EDGEBOX
 				_publishedOnline = true;
 			}
 		}
+	}
+
+	void IOT::HandleIPEvent(int32_t event_id, void *event_data)
+	{
+		ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
+		if (event_id == IP_EVENT_PPP_GOT_IP || event_id == IP_EVENT_ETH_GOT_IP)
+		{
+			const esp_netif_ip_info_t *ip_info = &event->ip_info;
+			logi("Got IP Address");
+			logi("~~~~~~~~~~~");
+			logi("IP:" IPSTR, IP2STR(&ip_info->ip));
+			logi("IPMASK:" IPSTR, IP2STR(&ip_info->netmask));
+			logi("Gateway:" IPSTR, IP2STR(&ip_info->gw));
+			logi("~~~~~~~~~~~");
+			GoOnline();
+		}
+		else if (event_id == IP_EVENT_PPP_LOST_IP)
+		{
+			logi("Modem Disconnect from PPP Server");
+			GoOffline();
+		}
+		else if (event_id == IP_EVENT_ETH_LOST_IP)
+		{
+			logi("Ethernet Disconnect");
+			GoOffline();
+		}
+		else if (event_id == IP_EVENT_GOT_IP6)
+		{
+			ip_event_got_ip6_t *event = (ip_event_got_ip6_t *)event_data;
+			logi("Got IPv6 address " IPV6STR, IPV62STR(event->ip6_info.ip));
+		}
+		else 
+		{
+			logd("IP event! %d", (int)event_id);
+		}
+	}
+
+	esp_err_t IOT::ConnectEthernet()
+	{
+		logd("ConnectEthernet");
+		esp_err_t ret = ESP_OK;
+		if ((ret = gpio_install_isr_service(0)) != ESP_OK)
+		{
+			if (ret == ESP_ERR_INVALID_STATE)
+			{
+				logw("GPIO ISR handler has been already installed");
+				ret = ESP_OK; // ISR handler has been already installed so no issues
+			}
+			else
+			{
+				logd("GPIO ISR handler install failed");
+			}
+		}
+		spi_bus_config_t buscfg = {
+			.mosi_io_num = MOSI,
+			.miso_io_num = MISO,
+			.sclk_io_num = SCK,
+			.quadwp_io_num = -1,
+			.quadhd_io_num = -1,
+		};
+		if ((ret = spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO)) != ESP_OK)
+		{
+			logd("SPI host #1 init failed");
+			return ret;
+		}
+		uint8_t base_mac_addr[6];
+		if ((ret = esp_efuse_mac_get_default(base_mac_addr)) == ESP_OK)
+		{
+			uint8_t local_mac_1[6];
+			esp_derive_local_mac(local_mac_1, base_mac_addr);
+			logi("ETH MAC: %02X:%02X:%02X:%02X:%02X:%02X", local_mac_1[0], local_mac_1[1], local_mac_1[2], local_mac_1[3], local_mac_1[4], local_mac_1[5]);
+			eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG(); // Init common MAC and PHY configs to default
+			eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
+			phy_config.phy_addr = 1;
+			phy_config.reset_gpio_num = ETH_RST;
+			spi_device_interface_config_t spi_devcfg = {
+				.command_bits = 16, // Actually it's the address phase in W5500 SPI frame
+				.address_bits = 8,	// Actually it's the control phase in W5500 SPI frame
+				.mode = 0,
+				.clock_speed_hz = 25 * 1000 * 1000,
+				.spics_io_num = SS,
+				.queue_size = 20,
+			};
+			spi_device_handle_t spi_handle;
+			if ((ret = spi_bus_add_device(SPI2_HOST, &spi_devcfg, &spi_handle)) != ESP_OK)
+			{
+				loge("spi_bus_add_device failed");
+			}
+			eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(spi_handle);
+			w5500_config.int_gpio_num = ETH_INT;
+			esp_eth_mac_t *mac = esp_eth_mac_new_w5500(&w5500_config, &mac_config);
+			esp_eth_phy_t *phy = esp_eth_phy_new_w5500(&phy_config);
+			esp_eth_handle_t eth_handle = NULL;
+			esp_eth_config_t eth_config_spi = ETH_DEFAULT_CONFIG(mac, phy);
+			if ((ret = esp_eth_driver_install(&eth_config_spi, &eth_handle)) != ESP_OK)
+			{
+				loge("esp_eth_driver_install failed");
+			}
+			if ((ret = esp_eth_ioctl(eth_handle, ETH_CMD_S_MAC_ADDR, local_mac_1)) != ESP_OK) // set mac address
+			{
+				logd("SPI Ethernet MAC address config failed");
+			}
+			esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH(); // Initialize the Ethernet interface
+			esp_netif_t *_netif = esp_netif_new(&cfg);
+			assert(_netif);
+			if ((ret = esp_netif_attach(_netif, esp_eth_new_netif_glue(eth_handle))) != ESP_OK)
+			{
+				loge("esp_netif_attach failed");
+			}
+			if ((ret = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &on_ip_event, this)) != ESP_OK)
+			{
+				loge("esp_event_handler_register IP_EVENT->IP_EVENT_ETH_GOT_IP failed");
+			}
+			if ((ret = esp_eth_start(eth_handle)) != ESP_OK)
+			{
+				loge("esp_netif_attach failed");
+				return ret;
+			}
+		}
+		return ret;
+	}
+
+	void IOT::wakeup_modem(void)
+	{
+
+		pinMode(MODEM_PWR_KEY, OUTPUT);
+		pinMode(MODEM_PWR_EN, OUTPUT);
+		digitalWrite(MODEM_PWR_EN, HIGH); // send power to the A7670G
+		digitalWrite(MODEM_PWR_KEY, LOW);
+		delay(1000);
+		logd("Power on the modem");
+		digitalWrite(MODEM_PWR_KEY, HIGH);
+		delay(2000);
+		logd("Modem is powered up and ready");
+	}
+
+	void IOT::start_network(void)
+	{
+		EventBits_t bits = 0;
+		while ((bits & MODEM_CONNECT_BIT) == 0)
+		{
+			if (!modem_check_sync())
+			{
+				logw("Modem does not respond, maybe in DATA mode? ...exiting network mode");
+				modem_stop_network();
+				if (!modem_check_sync())
+				{
+					logw("Modem does not respond to AT ...restarting");
+					modem_reset();
+					logi("Restarted");
+				}
+				continue;
+			}
+			if (!modem_check_signal())
+			{
+				logw("Poor signal ...will check after 5s");
+				vTaskDelay(pdMS_TO_TICKS(5000));
+				continue;
+			}
+			if (!modem_start_network())
+			{
+				loge("Modem could not enter network mode ...will retry after 10s");
+				vTaskDelay(pdMS_TO_TICKS(10000));
+				continue;
+			}
+		}
+	}
+
+	esp_err_t IOT::ConnectModem()
+	{
+		logd("ConnectModem");
+		esp_err_t ret = ESP_OK;
+		wakeup_modem();
+		esp_netif_config_t ppp_netif_config = ESP_NETIF_DEFAULT_PPP(); // Initialize lwip network interface in PPP mode
+		esp_netif_t *_netif = esp_netif_new(&ppp_netif_config);
+		assert(_netif);
+		ESP_ERROR_CHECK(modem_init_network(_netif)); // Initialize the PPP network and register for IP event
+		ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event, this));
+		start_network();
+		logi("Modem has acquired network");
+		return ret;
 	}
 
 } // namespace EDGEBOX

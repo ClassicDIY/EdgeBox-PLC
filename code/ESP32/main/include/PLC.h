@@ -23,7 +23,7 @@ namespace EDGEBOX
 		void Process();
 		void onMqttConnect();
 		void onMqttMessage(char* topic, JsonDocument& doc);
-		void onWiFiConnect();
+		void onNetworkConnect();
 		void addNetworkSettings(String& page);
 		void addNetworkConfigs(String& page);
 		void onSubmitForm(AsyncWebServerRequest *request);

@@ -50,6 +50,16 @@ const char network_config_top[] PROGMEM = R"rawliteral(
             const fieldset = document.getElementById("modbus");
             fieldset.disabled = !checkbox.checked;
         }
+        function showFields() {
+            // Hide all fields
+            document.querySelectorAll('#fields-container > div').forEach(div => div.classList.add('hidden'));
+
+            // Get selected value
+            var selectedValue = document.getElementById('networkSelector').value;
+            if (selectedValue) {
+                document.getElementById(selectedValue + '-fields').classList.remove('hidden');
+            }
+        }
     </script>
 <style>
 
@@ -105,7 +115,7 @@ const char network_config_top[] PROGMEM = R"rawliteral(
 
             margin-top: 10px;
 		} 
-        .hide{display: none;}
+        .hidden{display: none;}
         .ver {
             font-size: .6em;
         }
@@ -132,8 +142,27 @@ const char network_config_fields[] PROGMEM = R"rawliteral(
     <fieldset id="network" class="fs"><legend>Network</legend>
     <p><div class="fld"><label for="AP_SSID">AP SSID/Device Name</label><input type="text" id="AP_SSID" name="AP_SSID" value="{AP_SSID}" required maxlength="32"></div></p>
     <p><div class="fld"><label for="AP_Pw">AP/admin Password</label><input type="text" id="AP_Pw" name="AP_Pw" value="{AP_Pw}" minlength="8" required maxlength="32"></div></p>
-    <p><div class="fld"><label for="SSID">WiFi SSID</label><input type="text" id="SSID" name="SSID" value="{SSID}" maxlength="32"></div></p>
-    <p><div class="fld"><label for="WiFi_Pw">WiFi password</label><input type="text" id="WiFi_Pw" name="WiFi_Pw" value="{WiFi_Pw}" maxlength="32"></div></p>
+    <p><div class="fld"><label for="networkSelector">Network Mode:</label>
+    <select id="networkSelector" name="networkSelector" onchange="showFields()">
+        <option value="wifi" {WIFI}>WiFi</option>
+        <option value="ethernet" {ETH}>Ethernet</option>
+        <option value="modem" {4G}>4G Modem</option>
+    </select></div></p>
+    <div id="fields-container">
+        <div id="wifi-fields" class="hidden">
+            <p><div class="fld"><label for="SSID">WiFi SSID</label><input type="text" id="SSID" name="SSID" value="{SSID}" maxlength="32"></div></p>
+            <p><div class="fld"><label for="WiFi_Pw">WiFi password</label><input type="text" id="WiFi_Pw" name="WiFi_Pw" value="{WiFi_Pw}" maxlength="32"></div></p>
+        </div>
+        <div id="ethernet-fields" class="hidden">
+            <p><div class="fld"><label for="ETH_SIP">Static IP</label><input type="text" id="ETH_SIP" name="ETH_SIP" value="{ETH_SIP}" maxlength="32"></div></p>
+            <p><div class="fld"><label for="ETH_SM">Subnet Mask</label><input type="text" id="ETH_SM" name="ETH_SM" value="{ETH_SM}" maxlength="32"></div></p>
+            <p><div class="fld"><label for="ETH_GW">Gateway</label><input type="text" id="ETH_GW" name="ETH_GW" value="{ETH_GW}" maxlength="32"></div></p>
+        </div>
+        <div id="modem-fields" class="hidden">
+            <p><div class="fld"><label for="APN">APN</label><input type="text" id="APN" name="APN" value="{APN}" maxlength="32"></div></p>
+        </div>
+    </div>
+
     </fieldset>
     <fieldset id="mqtt" class="fs"><legend><label><input type="checkbox" id="mqttCheckbox" name="mqttCheckbox"  onclick="mqttFieldset(this)" {mqttchecked}>MQTT</label></legend>
     <p><div class="fld"><label for="mqttServer">MQTT Server</label><input type="text" id="mqttServer" name="mqttServer" value="{mqttServer}" maxlength="32"></div></p>

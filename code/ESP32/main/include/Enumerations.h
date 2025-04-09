@@ -2,15 +2,14 @@
 
 namespace EDGEBOX
 {
-    enum NetworkStatus
+    enum NetworkSelection
     {
         NotConnected,
         APMode,
         WiFiMode,
         EthernetMode,
         ModemMode
-
-    } ;
+    };
 
     enum NetworkState
     {

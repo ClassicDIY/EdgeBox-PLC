@@ -115,7 +115,7 @@ namespace EDGEBOX
 		});
 	}
 		
-	void PLC::onWiFiConnect()
+	void PLC::onNetworkConnect()
 	{
 		// READ_INPUT_REGISTER
 		auto modbusFC04 = [this](ModbusMessage request) -> ModbusMessage
