@@ -27,39 +27,6 @@ namespace EDGEBOX
 	static ModbusServerTCPasync _MBserver;
 	static AsyncAuthenticationMiddleware basicAuth;
 
-	void IOT::GoOnline()
-	{
-		logd("GoOnline called");
-		_pwebServer->begin();
-		_webLog.begin(_pwebServer);
-		_OTA.begin(_pwebServer);
-		if (_NetworkSelection != APMode)
-		{
-			if (_NetworkSelection == EthernetMode || _NetworkSelection == WiFiMode)
-			{
-				MDNS.begin(_AP_SSID.c_str());
-				MDNS.addService("http", "tcp", ASYNC_WEBSERVER_PORT);
-				logd("Active mDNS services: %d", MDNS.queryService("http", "tcp"));
-			}
-			this->IOTCB()->onNetworkConnect();
-			if (_useModbus && !_MBserver.isRunning())
-			{
-				_MBserver.start(_modbusPort, 5, 0); // listen for modbus requests
-			}
-			xTimerStart(mqttReconnectTimer, 0);
-			setState(OnLine);
-		}
-	}
-
-	void IOT::GoOffline()
-	{
-		xTimerStop(mqttReconnectTimer, 0); // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
-		_webLog.end();
-		_dnsServer.stop();
-		MDNS.end();
-		setState(OffLine);
-	}
-
 	void IOT::Init(IOTCallbackInterface *iotCB, AsyncWebServer *pwebServer)
 	{
 		_iotCB = iotCB;
@@ -161,6 +128,7 @@ namespace EDGEBOX
 
 			fields.replace("{SSID}", _SSID);
 			fields.replace("{WiFi_Pw}", _WiFi_Password);
+			fields.replace("{APN}", _APN);
 			fields.replace("{mqttchecked}", _useMQTT ? "checked" : "unchecked");
 			fields.replace("{mqttServer}", _mqttServer);
 			fields.replace("{mqttPort}", String(_mqttPort));
@@ -199,6 +167,9 @@ namespace EDGEBOX
 			}
 			if (request->hasParam("WiFi_Pw", true)) {
 				_WiFi_Password = request->getParam("WiFi_Pw", true)->value().c_str();
+			}
+			if (request->hasParam("APN", true)) {
+				_APN = request->getParam("APN", true)->value().c_str();
 			}
 			_useMQTT =  request->hasParam("mqttCheckbox", true);
 			if (request->hasParam("mqttServer", true)) {
@@ -261,6 +232,273 @@ namespace EDGEBOX
 	void IOT::registerMBWorkers(FunctionCode fc, MBSworker worker)
 	{
 		_MBserver.registerWorker(_modbusID, fc, worker);
+	}
+
+	void IOT::loadSettings()
+	{
+		String jsonString;
+		char ch;
+		for (int i = 0; i < EEPROM_SIZE; ++i)
+		{
+			ch = EEPROM.read(i);
+			if (ch == '\0')
+				break; // Stop at the null terminator
+			jsonString += ch;
+		}
+		Serial.println(jsonString.c_str());
+		JsonDocument doc;
+		DeserializationError error = deserializeJson(doc, jsonString);
+		if (error)
+		{
+			loge("Failed to load data from EEPROM, using defaults: %s", error.c_str());
+			saveSettings(); // save default values
+		}
+		else
+		{
+			logd("JSON loaded from EEPROM: %d", jsonString.length());
+			JsonObject iot = doc["iot"].as<JsonObject>();
+			_AP_SSID = iot["AP_SSID"].isNull() ? TAG : iot["AP_SSID"].as<String>();
+			_AP_Password = iot["AP_Pw"].isNull() ? DEFAULT_AP_PASSWORD : iot["AP_Pw"].as<String>();
+			_NetworkSelection = iot["Network"].isNull() ? WiFiMode : iot["Network"].as<NetworkSelection>();
+			_SSID = iot["SSID"].isNull() ? "" : iot["SSID"].as<String>();
+			_WiFi_Password = iot["WiFi_Pw"].isNull() ? "" : iot["WiFi_Pw"].as<String>();
+			_APN = iot["APN"].isNull() ? "" : iot["APN"].as<String>();
+			_useMQTT = iot["useMQTT"].isNull() ? false : iot["useMQTT"].as<bool>();
+			_mqttServer = iot["mqttServer"].isNull() ? "" : iot["mqttServer"].as<String>();
+			_mqttPort = iot["mqttPort"].isNull() ? 1883 : iot["mqttPort"].as<uint16_t>();
+			_mqttUserName = iot["mqttUser"].isNull() ? "" : iot["mqttUser"].as<String>();
+			_mqttUserPassword = iot["mqttPw"].isNull() ? "" : iot["mqttPw"].as<String>();
+			_useModbus = iot["useModbus"].isNull() ? false : iot["useModbus"].as<bool>();
+			_modbusPort = iot["modbusPort"].isNull() ? 502 : iot["modbusPort"].as<uint16_t>();
+			_modbusID = iot["modbusID"].isNull() ? 1 : iot["modbusID"].as<uint16_t>();
+			_iotCB->onLoadSetting(doc);
+		}
+	}
+
+	void IOT::saveSettings()
+	{
+		JsonDocument doc;
+		JsonObject iot = doc["iot"].to<JsonObject>();
+		iot["version"] = CONFIG_VERSION;
+		iot["AP_SSID"] = _AP_SSID;
+		iot["AP_Pw"] = _AP_Password;
+		iot["Network"] = _NetworkSelection;
+		iot["SSID"] = _SSID;
+		iot["WiFi_Pw"] = _WiFi_Password;
+		iot["APN"] = _APN;
+		iot["useMQTT"] = _useMQTT;
+		iot["mqttServer"] = _mqttServer;
+		iot["mqttPort"] = _mqttPort;
+		iot["mqttUser"] = _mqttUserName;
+		iot["mqttPw"] = _mqttUserPassword;
+		iot["useModbus"] = _useModbus;
+		iot["modbusPort"] = _modbusPort;
+		iot["modbusID"] = _modbusID;
+		_iotCB->onSaveSetting(doc);
+		String jsonString;
+		serializeJson(doc, jsonString);
+		// Serial.println(jsonString.c_str());
+		for (int i = 0; i < jsonString.length(); ++i)
+		{
+			EEPROM.write(i, jsonString[i]);
+		}
+		EEPROM.write(jsonString.length(), '\0'); // Null-terminate the string
+		EEPROM.commit();
+		logd("JSON saved, required EEPROM size: %d", jsonString.length());
+	}
+
+	void IOT::Run()
+	{
+		uint32_t now = millis();
+		if (_networkState == Boot && _NetworkSelection == NotConnected)
+		{ // Network not setup?, see if flasher is trying to send us the SSID/Pw
+			if (Serial.peek() == '{')
+			{
+				String s = Serial.readStringUntil('}');
+				s += "}";
+				JsonDocument doc;
+				DeserializationError err = deserializeJson(doc, s);
+				if (err)
+				{
+					loge("deserializeJson() failed: %s", err.c_str());
+				}
+				else
+				{
+					if (doc["ssid"].is<const char *>() && doc["password"].is<const char *>())
+					{
+						_SSID = doc["ssid"].as<String>();
+						logd("Setting ssid: %s", _SSID.c_str());
+						_WiFi_Password = doc["password"].as<String>();
+						logd("Setting password: %s", _WiFi_Password.c_str());
+						_NetworkSelection = WiFiMode;
+						saveSettings();
+						esp_restart();
+					}
+					else
+					{
+						logw("Received invalid json: %s", s.c_str());
+					}
+				}
+			}
+			else
+			{
+				Serial.read(); // discard data
+			}
+		}
+		else if (_networkState == Boot) // have network selection, start with wifiAP for AP_TIMEOUT then STA mode
+		{
+			setState(ApMode); // switch to AP mode for AP_TIMEOUT
+		}
+		else if (_networkState == ApMode)
+		{
+			if ((now - _waitInAPTimeStamp) > AP_TIMEOUT) // switch to selected network after waiting in APMode for AP_TIMEOUT duration
+			{ 
+				logd("Connecting to network: %d", _NetworkSelection);
+				setState(Connecting);
+			}
+			_dnsServer.processNextRequest();
+			_webLog.process();
+		}
+		else if (_networkState == Connecting)
+		{
+			if ((millis() - _NetworkConnectionStart) > WIFI_CONNECTION_TIMEOUT)
+			{
+				// -- Network not available, fall back to AP mode.
+				logw("Giving up on Network connection.");
+				WiFi.disconnect(true);
+				setState(ApMode);
+			}
+		}
+		else if (_networkState == OffLine) // went offline, try again...
+		{
+			setState(Connecting);
+		}
+		else if (_networkState == OnLine)
+		{
+			_webLog.process();
+		}
+#ifdef WIFI_STATUS_PIN
+		// handle blink led, fast : NotConnected slow: AP connected On: Station connected
+		if (_networkState != OnLine)
+		{
+			unsigned long binkRate = _networkState == ApMode ? AP_BLINK_RATE : NC_BLINK_RATE;
+			unsigned long now = millis();
+			if (binkRate < now - _lastBlinkTime)
+			{
+				_blinkStateOn = !_blinkStateOn;
+				_lastBlinkTime = now;
+				digitalWrite(WIFI_STATUS_PIN, _blinkStateOn ? HIGH : LOW);
+			}
+		}
+		else
+		{
+			digitalWrite(WIFI_STATUS_PIN, HIGH);
+		}
+#endif
+		vTaskDelay(pdMS_TO_TICKS(20));
+		return;
+	}
+
+	void IOT::GoOnline()
+	{
+		logd("GoOnline called");
+		_pwebServer->begin();
+		_webLog.begin(_pwebServer);
+		_OTA.begin(_pwebServer);
+		if (_NetworkSelection != APMode)
+		{
+			if (_NetworkSelection == EthernetMode || _NetworkSelection == WiFiMode)
+			{
+				MDNS.begin(_AP_SSID.c_str());
+				MDNS.addService("http", "tcp", ASYNC_WEBSERVER_PORT);
+				logd("Active mDNS services: %d", MDNS.queryService("http", "tcp"));
+			}
+			this->IOTCB()->onNetworkConnect();
+			if (_useModbus && !_MBserver.isRunning())
+			{
+				_MBserver.start(_modbusPort, 5, 0); // listen for modbus requests
+			}
+			xTimerStart(mqttReconnectTimer, 0);
+			setState(OnLine);
+		}
+	}
+
+	void IOT::GoOffline()
+	{
+		xTimerStop(mqttReconnectTimer, 0); // ensure we don't reconnect to MQTT while reconnecting to Wi-Fi
+		_webLog.end();
+		_dnsServer.stop();
+		MDNS.end();
+		setState(OffLine);
+	}
+
+	void IOT::setState(NetworkState newState)
+	{
+		NetworkState oldState = _networkState;
+		_networkState = newState;
+		switch (newState)
+		{
+		case OffLine:
+			WiFi.disconnect(true);
+			WiFi.mode(WIFI_OFF);
+			DisconnectModem();
+			DisconnectEthernet();
+			break;
+		case ApMode:
+			if ((oldState == Connecting) || (oldState == OnLine))
+			{
+				WiFi.disconnect(true);
+				DisconnectModem();
+				DisconnectEthernet();
+			}
+			WiFi.mode(WIFI_AP);
+			if (WiFi.softAP(_AP_SSID, _AP_Password))
+			{
+				IPAddress IP = WiFi.softAPIP();
+				logi("WiFi AP SSID: %s PW: %s", _AP_SSID.c_str(), _AP_Password.c_str());
+				logd("AP IP address: %s", IP.toString().c_str());
+				_dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+				_dnsServer.start(DNS_PORT, "*", IP);
+			}
+			_waitInAPTimeStamp = millis();
+			break;
+		case Connecting:
+			_NetworkConnectionStart = millis();
+			if (_NetworkSelection == WiFiMode)
+			{			
+				WiFi.setHostname(_AP_SSID.c_str());
+				WiFi.mode(WIFI_STA);
+				WiFi.begin(_SSID, _WiFi_Password);
+			} 
+			else if (_NetworkSelection == EthernetMode)
+			{
+				if (ConnectEthernet() == ESP_OK)
+				{
+					logd("Ethernet succeeded");
+				}
+				else
+				{
+					loge("Failed to connect to Ethernet");
+				}				
+			}
+			else if (_NetworkSelection == ModemMode)
+			{
+				if (ConnectModem() == ESP_OK)
+				{
+					logd("Modem succeeded");
+				}
+				else
+				{
+					loge("Failed to connect to 4G Modem");
+				}
+			}
+			break;
+		case OnLine:
+			logd("State: Online");
+			break;
+		default:
+			break;
+		}
 	}
 
 	void IOT::HandleMQTT(int32_t event_id, void *event_data)
@@ -359,237 +597,6 @@ namespace EDGEBOX
 				esp_mqtt_client_start(_mqtt_client_handle);
 			}
 		}
-	}
-
-	void IOT::Run()
-	{
-		uint32_t now = millis();
-		if (_networkState == Boot && _NetworkSelection == NotConnected)
-		{ // Network not setup?, see if flasher is trying to send us the SSID/Pw
-			if (Serial.peek() == '{')
-			{
-				String s = Serial.readStringUntil('}');
-				s += "}";
-				JsonDocument doc;
-				DeserializationError err = deserializeJson(doc, s);
-				if (err)
-				{
-					loge("deserializeJson() failed: %s", err.c_str());
-				}
-				else
-				{
-					if (doc["ssid"].is<const char *>() && doc["password"].is<const char *>())
-					{
-						_SSID = doc["ssid"].as<String>();
-						logd("Setting ssid: %s", _SSID.c_str());
-						_WiFi_Password = doc["password"].as<String>();
-						logd("Setting password: %s", _WiFi_Password.c_str());
-						_NetworkSelection = WiFiMode;
-						saveSettings();
-						esp_restart();
-					}
-					else
-					{
-						logw("Received invalid json: %s", s.c_str());
-					}
-				}
-			}
-			else
-			{
-				Serial.read(); // discard data
-			}
-		}
-		else if (_networkState == Boot) // have network selection, start with wifiAP for AP_TIMEOUT then STA mode
-		{
-			setState(ApMode); // switch to AP mode for AP_TIMEOUT
-		}
-		else if (_networkState == ApMode)
-		{
-			if (now > (_waitInAPTimeStamp + AP_TIMEOUT)) // switch to selected network after waiting for AP connection timeout
-			{ 
-				logd("Connecting to network: %d", _NetworkSelection);
-				setState(_NetworkSelection == ModemMode ? ConnectingModem : _NetworkSelection == EthernetMode ? ConnectingEthernet : ConnectingWifi);
-			}
-			_dnsServer.processNextRequest();
-			_webLog.process();
-		}
-		else if (_networkState == ConnectingWifi)
-		{
-			if (WiFi.status() != WL_CONNECTED)
-			{
-				if ((millis() - _wifiConnectionStart) > WIFI_CONNECTION_TIMEOUT)
-				{
-					// -- WiFi not available, fall back to AP mode.
-					logw("Giving up on WiFi connection.");
-					WiFi.disconnect(true);
-					setState(ApMode);
-				}
-			}
-			else
-			{
-				logi("WiFi connected, IP address: %s", WiFi.localIP().toString().c_str());
-				setState(OnLine);
-				return;
-			}
-		}
-		else if (_networkState == OnLine)
-		{
-			_webLog.process();
-		}
-#ifdef WIFI_STATUS_PIN
-		// handle blink led, fast : NotConnected slow: AP connected On: Station connected
-		if (_NetworkStatus != WiFiMode)
-		{
-			unsigned long binkRate = _NetworkStatus == NotConnected ? NC_BLINK_RATE : AP_BLINK_RATE;
-			unsigned long now = millis();
-			if (binkRate < now - _lastBlinkTime)
-			{
-				_blinkStateOn = !_blinkStateOn;
-				_lastBlinkTime = now;
-				digitalWrite(WIFI_STATUS_PIN, _blinkStateOn ? HIGH : LOW);
-			}
-		}
-		else
-		{
-			digitalWrite(WIFI_STATUS_PIN, HIGH);
-		}
-#endif
-		return;
-	}
-
-	void IOT::setState(NetworkState newState)
-	{
-		NetworkState oldState = _networkState;
-		_networkState = newState;
-		switch (newState)
-		{
-		case OffLine:
-			WiFi.disconnect(true);
-			WiFi.mode(WIFI_OFF);
-			break;
-		case ApMode:
-			if ((oldState == ConnectingWifi) || (oldState == OnLine))
-			{
-				WiFi.disconnect(true);
-			}
-			WiFi.mode(WIFI_AP);
-			if (WiFi.softAP(_AP_SSID, _AP_Password))
-			{
-				IPAddress IP = WiFi.softAPIP();
-				logi("WiFi AP SSID: %s PW: %s", _AP_SSID.c_str(), _AP_Password.c_str());
-				logd("AP IP address: %s", IP.toString().c_str());
-				_dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-				_dnsServer.start(DNS_PORT, "*", IP);
-			}
-			_waitInAPTimeStamp = millis();
-			break;
-		case ConnectingWifi:
-			_wifiConnectionStart = millis();
-			WiFi.setHostname(_AP_SSID.c_str());
-			WiFi.mode(WIFI_STA);
-			WiFi.begin(_SSID, _WiFi_Password);
-			break;
-
-		case ConnectingEthernet:
-			if (ConnectEthernet() == ESP_OK)
-			{
-				logd("Ethernet succeeded");
-			}
-			else
-			{
-				loge("Failed to connect to Ethernet");
-			}
-			break;
-
-		case ConnectingModem:
-			if (ConnectModem() == ESP_OK)
-			{
-				logd("Modem succeeded");
-			}
-			else
-			{
-				loge("Failed to connect to 4G Modem");
-			}
-			break;
-		case OnLine:
-			logd("State: Online");
-			break;
-		default:
-			break;
-		}
-	}
-
-	void IOT::loadSettings()
-	{
-		String jsonString;
-		char ch;
-		for (int i = 0; i < EEPROM_SIZE; ++i)
-		{
-			ch = EEPROM.read(i);
-			if (ch == '\0')
-				break; // Stop at the null terminator
-			jsonString += ch;
-		}
-		Serial.println(jsonString.c_str());
-		JsonDocument doc;
-		DeserializationError error = deserializeJson(doc, jsonString);
-		if (error)
-		{
-			loge("Failed to load data from EEPROM, using defaults: %s", error.c_str());
-			saveSettings(); // save default values
-		}
-		else
-		{
-			logd("JSON loaded from EEPROM: %d", jsonString.length());
-			JsonObject iot = doc["iot"].as<JsonObject>();
-			_AP_SSID = iot["AP_SSID"].isNull() ? TAG : iot["AP_SSID"].as<String>();
-			_AP_Password = iot["AP_Pw"].isNull() ? DEFAULT_AP_PASSWORD : iot["AP_Pw"].as<String>();
-			_NetworkSelection = iot["Network"].isNull() ? WiFiMode : iot["Network"].as<NetworkSelection>();
-			_SSID = iot["SSID"].isNull() ? "" : iot["SSID"].as<String>();
-			_WiFi_Password = iot["WiFi_Pw"].isNull() ? "" : iot["WiFi_Pw"].as<String>();
-			_APN = iot["APN"].isNull() ? "" : iot["APN"].as<String>();
-			_useMQTT = iot["useMQTT"].isNull() ? false : iot["useMQTT"].as<bool>();
-			_mqttServer = iot["mqttServer"].isNull() ? "" : iot["mqttServer"].as<String>();
-			_mqttPort = iot["mqttPort"].isNull() ? 1883 : iot["mqttPort"].as<uint16_t>();
-			_mqttUserName = iot["mqttUser"].isNull() ? "" : iot["mqttUser"].as<String>();
-			_mqttUserPassword = iot["mqttPw"].isNull() ? "" : iot["mqttPw"].as<String>();
-			_useModbus = iot["useModbus"].isNull() ? false : iot["useModbus"].as<bool>();
-			_modbusPort = iot["modbusPort"].isNull() ? 502 : iot["modbusPort"].as<uint16_t>();
-			_modbusID = iot["modbusID"].isNull() ? 1 : iot["modbusID"].as<uint16_t>();
-			_iotCB->onLoadSetting(doc);
-		}
-	}
-
-	void IOT::saveSettings()
-	{
-		JsonDocument doc;
-		JsonObject iot = doc["iot"].to<JsonObject>();
-		iot["version"] = CONFIG_VERSION;
-		iot["AP_SSID"] = _AP_SSID;
-		iot["AP_Pw"] = _AP_Password;
-		iot["Network"] = _NetworkSelection;
-		iot["SSID"] = _SSID;
-		iot["WiFi_Pw"] = _WiFi_Password;
-		iot["APN"] = _APN;
-		iot["useMQTT"] = _useMQTT;
-		iot["mqttServer"] = _mqttServer;
-		iot["mqttPort"] = _mqttPort;
-		iot["mqttUser"] = _mqttUserName;
-		iot["mqttPw"] = _mqttUserPassword;
-		iot["useModbus"] = _useModbus;
-		iot["modbusPort"] = _modbusPort;
-		iot["modbusID"] = _modbusID;
-		_iotCB->onSaveSetting(doc);
-		String jsonString;
-		serializeJson(doc, jsonString);
-		// Serial.println(jsonString.c_str());
-		for (int i = 0; i < jsonString.length(); ++i)
-		{
-			EEPROM.write(i, jsonString[i]);
-		}
-		EEPROM.write(jsonString.length(), '\0'); // Null-terminate the string
-		EEPROM.commit();
-		logd("JSON saved, required EEPROM size: %d", jsonString.length());
 	}
 
 	boolean IOT::Publish(const char *subtopic, JsonDocument &payload, boolean retained)
@@ -763,28 +770,29 @@ namespace EDGEBOX
 			w5500_config.int_gpio_num = ETH_INT;
 			esp_eth_mac_t *mac = esp_eth_mac_new_w5500(&w5500_config, &mac_config);
 			esp_eth_phy_t *phy = esp_eth_phy_new_w5500(&phy_config);
-			esp_eth_handle_t eth_handle = NULL;
+			_eth_handle = NULL;
 			esp_eth_config_t eth_config_spi = ETH_DEFAULT_CONFIG(mac, phy);
-			if ((ret = esp_eth_driver_install(&eth_config_spi, &eth_handle)) != ESP_OK)
+			if ((ret = esp_eth_driver_install(&eth_config_spi, &_eth_handle)) != ESP_OK)
 			{
 				loge("esp_eth_driver_install failed");
 			}
-			if ((ret = esp_eth_ioctl(eth_handle, ETH_CMD_S_MAC_ADDR, local_mac_1)) != ESP_OK) // set mac address
+			if ((ret = esp_eth_ioctl(_eth_handle, ETH_CMD_S_MAC_ADDR, local_mac_1)) != ESP_OK) // set mac address
 			{
 				logd("SPI Ethernet MAC address config failed");
 			}
 			esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH(); // Initialize the Ethernet interface
-			esp_netif_t *_netif = esp_netif_new(&cfg);
+			_netif = esp_netif_new(&cfg);
 			assert(_netif);
-			if ((ret = esp_netif_attach(_netif, esp_eth_new_netif_glue(eth_handle))) != ESP_OK)
+			eth_netif_glue = esp_eth_new_netif_glue(_eth_handle);
+			if ((ret = esp_netif_attach(_netif, eth_netif_glue)) != ESP_OK)
 			{
 				loge("esp_netif_attach failed");
 			}
-			if ((ret = esp_event_handler_register(IP_EVENT, IP_EVENT_ETH_GOT_IP, &on_ip_event, this)) != ESP_OK)
+			if ((ret = esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, this)) != ESP_OK)
 			{
 				loge("esp_event_handler_register IP_EVENT->IP_EVENT_ETH_GOT_IP failed");
 			}
-			if ((ret = esp_eth_start(eth_handle)) != ESP_OK)
+			if ((ret = esp_eth_start(_eth_handle)) != ESP_OK)
 			{
 				loge("esp_netif_attach failed");
 				return ret;
@@ -795,7 +803,6 @@ namespace EDGEBOX
 
 	void IOT::wakeup_modem(void)
 	{
-
 		pinMode(MODEM_PWR_KEY, OUTPUT);
 		pinMode(MODEM_PWR_EN, OUTPUT);
 		digitalWrite(MODEM_PWR_EN, HIGH); // send power to the A7670G
@@ -807,10 +814,18 @@ namespace EDGEBOX
 		logd("Modem is powered up and ready");
 	}
 
-	void IOT::start_network(void)
+	esp_err_t IOT::ConnectModem()
 	{
-		EventBits_t bits = 0;
-		while ((bits & MODEM_CONNECT_BIT) == 0)
+		logd("ConnectModem");
+		esp_err_t ret = ESP_OK;
+		wakeup_modem();
+		esp_netif_config_t ppp_netif_config = ESP_NETIF_DEFAULT_PPP(); // Initialize lwip network interface in PPP mode
+		_netif = esp_netif_new(&ppp_netif_config);
+		assert(_netif);
+		ESP_ERROR_CHECK(modem_init_network(_netif, _APN.c_str())); // Initialize the PPP network and register for IP event
+		ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event, this));
+		int retryCount = 3;
+		while (retryCount-- != 0)
 		{
 			if (!modem_check_sync())
 			{
@@ -837,21 +852,26 @@ namespace EDGEBOX
 				continue;
 			}
 		}
-	}
-
-	esp_err_t IOT::ConnectModem()
-	{
-		logd("ConnectModem");
-		esp_err_t ret = ESP_OK;
-		wakeup_modem();
-		esp_netif_config_t ppp_netif_config = ESP_NETIF_DEFAULT_PPP(); // Initialize lwip network interface in PPP mode
-		esp_netif_t *_netif = esp_netif_new(&ppp_netif_config);
-		assert(_netif);
-		ESP_ERROR_CHECK(modem_init_network(_netif)); // Initialize the PPP network and register for IP event
-		ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event, this));
-		start_network();
 		logi("Modem has acquired network");
 		return ret;
+	}
+
+	void IOT::DisconnectModem()
+	{
+		modem_stop_network();
+		modem_deinit_network();
+		esp_netif_destroy(_netif);
+		ESP_ERROR_CHECK(esp_netif_deinit());
+		ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event));
+	}
+
+	void IOT::DisconnectEthernet()
+	{
+        ESP_ERROR_CHECK(esp_eth_stop(_eth_handle));
+        ESP_ERROR_CHECK(esp_eth_del_netif_glue(eth_netif_glue));
+		esp_netif_destroy(_netif);
+		ESP_ERROR_CHECK(esp_netif_deinit());
+		ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event));
 	}
 
 } // namespace EDGEBOX

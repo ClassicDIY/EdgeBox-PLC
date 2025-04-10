@@ -160,14 +160,15 @@ namespace {
  */
 NetDCE *dce = nullptr;
 
-extern "C" esp_err_t modem_init_network(esp_netif_t *netif)
+extern "C" esp_err_t modem_init_network(esp_netif_t *netif,  const char * apn)
 {
     // configure
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_EDGEBOX_CONFIG();
     dte_config.uart_config.rx_buffer_size = 16384;
     dte_config.uart_config.tx_buffer_size = 2048;
-    esp_modem_dce_config dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_GATEWAY_MODEM_PPP_APN);
-
+    // esp_modem_dce_config dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_GATEWAY_MODEM_PPP_APN);
+    esp_modem_dce_config dce_config;
+    dce_config.apn = apn;
     // create DTE and minimal network DCE
     auto uart_dte = create_uart_dte(&dte_config);
 

@@ -15,9 +15,7 @@ namespace EDGEBOX
     {
       Boot,
       ApMode,
-      ConnectingWifi,
-      ConnectingEthernet,
-      ConnectingModem,
+      Connecting,
       OnLine,
       OffLine
     };

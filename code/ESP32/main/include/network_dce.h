@@ -58,7 +58,7 @@ extern "C" {
  *
  * @return ESP_OK on success
  */
-esp_err_t modem_init_network(esp_netif_t *netif);
+esp_err_t modem_init_network(esp_netif_t *netif, const char * apn);
 
 /**
  * @brief Destroys the single network DCE

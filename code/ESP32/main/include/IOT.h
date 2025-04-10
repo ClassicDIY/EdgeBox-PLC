@@ -67,7 +67,7 @@ namespace EDGEBOX
         unsigned long _lastBlinkTime = 0;
         unsigned long _lastBootTimeStamp = millis();
         unsigned long _waitInAPTimeStamp = millis();
-        unsigned long _wifiConnectionStart = 0;
+        unsigned long _NetworkConnectionStart = 0;
         char _willTopic[STR_LEN*2];
         char _rootTopicPrefix[STR_LEN];
         esp_mqtt_client_handle_t _mqtt_client_handle = 0;
@@ -79,9 +79,13 @@ namespace EDGEBOX
         void HandleMQTT(int32_t event_id, void *event_data);
         void setState(NetworkState newState);
         void wakeup_modem(void);
-        void start_network(void);
+        esp_netif_t *_netif;
         esp_err_t ConnectModem();
+        void DisconnectModem();
+        esp_eth_handle_t _eth_handle;
+        esp_eth_netif_glue_handle_t eth_netif_glue;
         esp_err_t ConnectEthernet();
+        void DisconnectEthernet();
         void HandleIPEvent(int32_t event_id, void *event_data);
         static void mqttReconnectTimerCF(TimerHandle_t xTimer)
         {

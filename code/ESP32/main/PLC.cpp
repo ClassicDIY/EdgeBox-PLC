@@ -294,8 +294,7 @@ namespace EDGEBOX
 		if (now - _lastHeap >= WS_CLIENT_CLEANUP)
 		{
 			_lastHeap = now;
-			// cleanup disconnected clients or too many clients
-			_webSocket.cleanupClients();
+			_webSocket.cleanupClients(); // cleanup disconnected clients or too many clients
 		}
 		if (_iot.getNetworkState() == OnLine)
 		{
@@ -335,7 +334,6 @@ namespace EDGEBOX
 			}
 		}
 	}
-
 
 	void PLC::onMqttConnect()
 	{
