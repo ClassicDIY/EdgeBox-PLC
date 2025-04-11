@@ -14,7 +14,7 @@ int weblog_log_printfv(const char *format, va_list arg)
     va_end(copy);
     if (len >= (BUFFER_SIZE - 1))
     {
-        len = BUFFER_SIZE - 5;
+        len = BUFFER_SIZE - 5; // truncate log msg
         vsnprintf(loc_buf, len, format, arg);
         strcat(loc_buf, "...\n");
     }
@@ -25,8 +25,10 @@ int weblog_log_printfv(const char *format, va_list arg)
     if (_webSocket.count() > 0)  {
         _webSocket.textAll(loc_buf);
     }
-    int rVal = ets_printf("%s", loc_buf);
-    return rVal;
+    #ifdef LOG_TO_SERIAL_PORT
+    ets_printf("%s", loc_buf);
+    #endif
+    return len;
 }
 
 int weblog(const char *format, ...)

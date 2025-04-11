@@ -14,7 +14,7 @@ namespace EDGEBOX
     enum NetworkState
     {
       Boot,
-      ApMode,
+      ApState,
       Connecting,
       OnLine,
       OffLine

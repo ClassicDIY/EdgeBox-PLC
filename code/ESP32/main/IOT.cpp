@@ -32,8 +32,8 @@ namespace EDGEBOX
 		_iotCB = iotCB;
 		_pwebServer = pwebServer;
 		pinMode(FACTORY_RESET_PIN, INPUT_PULLUP);
-#ifdef WIFI_STATUS_PIN
-		pinMode(WIFI_STATUS_PIN, OUTPUT);
+#ifndef LOG_TO_SERIAL_PORT
+		pinMode(WIFI_STATUS_PIN, OUTPUT); // use LED if the log level is none (edgeBox shares the LED pin with the serial TX gpio)
 #endif
 		EEPROM.begin(EEPROM_SIZE);
 		if (digitalRead(FACTORY_RESET_PIN) == LOW)
@@ -424,9 +424,9 @@ namespace EDGEBOX
 		}
 		else if (_networkState == Boot) // have network selection, start with wifiAP for AP_TIMEOUT then STA mode
 		{
-			setState(ApMode); // switch to AP mode for AP_TIMEOUT
+			setState(ApState); // switch to AP mode for AP_TIMEOUT
 		}
-		else if (_networkState == ApMode)
+		else if (_networkState == ApState)
 		{
 			if ((now - _waitInAPTimeStamp) > AP_TIMEOUT) // switch to selected network after waiting in APMode for AP_TIMEOUT duration
 			{ 
@@ -443,7 +443,7 @@ namespace EDGEBOX
 				// -- Network not available, fall back to AP mode.
 				logw("Giving up on Network connection.");
 				WiFi.disconnect(true);
-				setState(ApMode);
+				setState(ApState);
 			}
 		}
 		else if (_networkState == OffLine) // went offline, try again...
@@ -454,11 +454,12 @@ namespace EDGEBOX
 		{
 			_webLog.process();
 		}
-#if APP_LOG_LEVEL == ARDUHAL_LOG_LEVEL_NONE
+#ifndef LOG_TO_SERIAL_PORT
+		// use LED if the log level is none (edgeBox shares the LED pin with the serial TX gpio)
 		// handle blink led, fast : NotConnected slow: AP connected On: Station connected
 		if (_networkState != OnLine)
 		{
-			unsigned long binkRate = _networkState == ApMode ? AP_BLINK_RATE : NC_BLINK_RATE;
+			unsigned long binkRate = _networkState == ApState ? AP_BLINK_RATE : NC_BLINK_RATE;
 			unsigned long now = millis();
 			if (binkRate < now - _lastBlinkTime)
 			{
@@ -482,7 +483,7 @@ namespace EDGEBOX
 		_pwebServer->begin();
 		_webLog.begin(_pwebServer);
 		_OTA.begin(_pwebServer);
-		if (_NetworkSelection != APMode)
+		if (_networkState > APMode)
 		{
 			if (_NetworkSelection == EthernetMode || _NetworkSelection == WiFiMode)
 			{
@@ -495,6 +496,7 @@ namespace EDGEBOX
 			{
 				_MBserver.start(_modbusPort, 5, 0); // listen for modbus requests
 			}
+			logd("Before xTimerStart _NetworkSelection: %d", _NetworkSelection );
 			xTimerStart(mqttReconnectTimer, 0);
 			setState(OnLine);
 		}
@@ -521,7 +523,7 @@ namespace EDGEBOX
 			DisconnectModem();
 			DisconnectEthernet();
 			break;
-		case ApMode:
+		case ApState:
 			if ((oldState == Connecting) || (oldState == OnLine))
 			{
 				WiFi.disconnect(true);
