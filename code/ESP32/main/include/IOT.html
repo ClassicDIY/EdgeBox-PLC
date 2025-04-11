@@ -42,6 +42,11 @@ const char network_config_top[] PROGMEM = R"rawliteral(
     <!DOCTYPE html><html lang=\"en\"><head><meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <title>{n}</title>
     <script>
+    
+        function dhcpCheck(checkbox) {
+            const fieldset = document.getElementById("dhcp");
+            fieldset.disabled = checkbox.checked;
+        }
         function mqttFieldset(checkbox) {
             const fieldset = document.getElementById("mqtt");
             fieldset.disabled = !checkbox.checked;
@@ -60,6 +65,12 @@ const char network_config_top[] PROGMEM = R"rawliteral(
                 document.getElementById(selectedValue + '-fields').classList.remove('hidden');
             }
         }
+        window.onload = function() {
+		  showFields();
+          mqttFieldset(document.getElementById("mqttCheckbox"));
+          modbusFieldset(document.getElementById("modbusCheckbox"));
+          dhcpCheck(document.getElementById("dhcpCheckbox"));
+		}
     </script>
 <style>
 
@@ -154,12 +165,17 @@ const char network_config_fields[] PROGMEM = R"rawliteral(
             <p><div class="fld"><label for="WiFi_Pw">WiFi password</label><input type="text" id="WiFi_Pw" name="WiFi_Pw" value="{WiFi_Pw}" maxlength="32"></div></p>
         </div>
         <div id="ethernet-fields" class="hidden">
-            <p><div class="fld"><label for="ETH_SIP">Static IP</label><input type="text" id="ETH_SIP" name="ETH_SIP" value="{ETH_SIP}" maxlength="32"></div></p>
-            <p><div class="fld"><label for="ETH_SM">Subnet Mask</label><input type="text" id="ETH_SM" name="ETH_SM" value="{ETH_SM}" maxlength="32"></div></p>
-            <p><div class="fld"><label for="ETH_GW">Gateway</label><input type="text" id="ETH_GW" name="ETH_GW" value="{ETH_GW}" maxlength="32"></div></p>
+            <fieldset id="dhcp" class="fs"><legend><label><input type="checkbox" id="dhcpCheckbox" name="dhcpCheckbox"  onclick="dhcpCheck(this)" {dhcpChecked}>Use DHCP</label></legend>
+                <p><div class="fld"><label for="ETH_SIP">Static IP</label><input type="text" id="ETH_SIP" name="ETH_SIP" value="{ETH_SIP}" maxlength="32"></div></p>
+                <p><div class="fld"><label for="ETH_SM">Subnet Mask</label><input type="text" id="ETH_SM" name="ETH_SM" value="{ETH_SM}" maxlength="32"></div></p>
+                <p><div class="fld"><label for="ETH_GW">Gateway</label><input type="text" id="ETH_GW" name="ETH_GW" value="{ETH_GW}" maxlength="32"></div></p>
+            </fieldset>
         </div>
         <div id="modem-fields" class="hidden">
             <p><div class="fld"><label for="APN">APN</label><input type="text" id="APN" name="APN" value="{APN}" maxlength="32"></div></p>
+            <p><div class="fld"><label for="SIM_USERNAME">Username</label><input type="text" id="SIM_USERNAME" name="SIM_USERNAME" value="{SIM_USERNAME}" maxlength="32"></div></p>
+            <p><div class="fld"><label for="SIM_PASSWORD">Password</label><input type="text" id="SIM_PASSWORD" name="SIM_PASSWORD" value="{SIM_PASSWORD}" maxlength="32"></div></p>
+            <p><div class="fld"><label for="SIM_PIN">PIN</label><input type="text" id="SIM_PIN" name="SIM_PIN" value="{SIM_PIN}" maxlength="32"></div></p>
         </div>
     </div>
 
@@ -181,22 +197,43 @@ const char network_config_apply_button[] PROGMEM = R"rawliteral(
     </form>
 )rawliteral";
 
-const char network_settings[] PROGMEM = R"rawliteral(  
-<fieldset id="network" class="fs"><legend>Network</legend>
-    <p><div class="fld">AP SSID/Device Name: {AP_SSID}</div></p>
-    <p><div class="fld">AP/admin Password: {AP_Pw}</div></p>
-    <p><div class="fld">WiFi SSID: {SSID}</div></p>
-    <p><div class="fld">WiFi Password: {WiFi_Pw}</div></p>
-</fieldset>
-)rawliteral";
+const char network_settings_fs[] PROGMEM = R"rawliteral(  
+    <fieldset id="network" class="fs"><legend>Network</legend>
+        <p><div class="fld">AP SSID/Device Name: {AP_SSID}</div></p>
+        <p><div class="fld">AP/admin Password: {AP_Pw}</div></p>
+        {NET}
+    </fieldset>
+    )rawliteral";
+
+    const char network_settings_wifi[] PROGMEM = R"rawliteral(  
+        <p><div class="fld">WiFi SSID: {SSID}</div></p>
+        <p><div class="fld">WiFi Password: {WiFi_Pw}</div></p>
+    )rawliteral";
+    const char network_settings_eth_st[] PROGMEM = R"rawliteral(  
+        <p><div class="fld">Ethernet</div></p>
+        <p><div class="fld">Static IP: {ETH_SIP}</div></p>
+        <p><div class="fld">Subnet Mask: {ETH_SM}</div></p>
+        <p><div class="fld">Gateway: {ETH_GW}</div></p>
+    )rawliteral";
+    const char network_settings_eth_dhcp[] PROGMEM = R"rawliteral(  
+        <p><div class="fld">Ethernet Using DHCP</div></p>
+    )rawliteral";
+    const char network_settings_modem[] PROGMEM = R"rawliteral(
+        <p><div class="fld">4G Modem</div></p>  
+        <p><div class="fld">APN: {APN}</div></p>
+        <p><div class="fld">Username: {SIM_USERNAME}</div></p>
+        <p><div class="fld">Password: {SIM_PASSWORD}</div></p>
+        <p><div class="fld">PIN: {SIM_PIN}</div></p>
+    )rawliteral";
+
 const char mqtt_settings[] PROGMEM = R"rawliteral(
-<fieldset id="mqtt" class="fs"><legend>MQTT</legend>
-    <p><div class="fld">MQTT server: {mqttServer}</div></p>
-    <p><div class="fld">MQTT port: {mqttPort}</div></p>
-    <p><div class="fld">MQTT user: {mqttUser}</div></p>
-    <p><div class="fld">MQTT password: {mqttPw}</div></p>
-</fieldset>
-)rawliteral";
+    <fieldset id="mqtt" class="fs"><legend>MQTT</legend>
+        <p><div class="fld">MQTT server: {mqttServer}</div></p>
+        <p><div class="fld">MQTT port: {mqttPort}</div></p>
+        <p><div class="fld">MQTT user: {mqttUser}</div></p>
+        <p><div class="fld">MQTT password: {mqttPw}</div></p>
+    </fieldset>
+    )rawliteral";
 const char modbus_settings[] PROGMEM = R"rawliteral(
 <fieldset id="Modbus" class="fs"><legend>Modbus</legend>
     <p><div class="fld">Modbus Port: {modbusPort}</div></p>

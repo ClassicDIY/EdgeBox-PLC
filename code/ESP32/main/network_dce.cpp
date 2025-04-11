@@ -7,7 +7,7 @@
 /*
  *  softAP to PPPoS Example (network_dce)
 */
-
+#include <string.h>
 #include "cxx_include/esp_modem_dte.hpp"
 #include "esp_modem_config.h"
 #include "cxx_include/esp_modem_api.hpp"
@@ -160,13 +160,12 @@ namespace {
  */
 NetDCE *dce = nullptr;
 
-extern "C" esp_err_t modem_init_network(esp_netif_t *netif,  const char * apn)
+extern "C" esp_err_t modem_init_network(esp_netif_t *netif,  const char * apn, const char * pin)
 {
     // configure
     esp_modem_dte_config_t dte_config = ESP_MODEM_DTE_EDGEBOX_CONFIG();
     dte_config.uart_config.rx_buffer_size = 16384;
     dte_config.uart_config.tx_buffer_size = 2048;
-    // esp_modem_dce_config dce_config = ESP_MODEM_DCE_DEFAULT_CONFIG(CONFIG_GATEWAY_MODEM_PPP_APN);
     esp_modem_dce_config dce_config;
     dce_config.apn = apn;
     // create DTE and minimal network DCE
@@ -174,11 +173,13 @@ extern "C" esp_err_t modem_init_network(esp_netif_t *netif,  const char * apn)
 
     // create the specific device (and initialize it)
     auto dev = NetDCE_Factory::create_module<NetModule>(&dce_config, uart_dte, netif);
-#if CONFIG_EXAMPLE_NEED_SIM_PIN == 1
-    if (!dev->init_sim(CONFIG_EXAMPLE_SIM_PIN)) {
-        return ESP_FAIL;
+    if (strlen(pin) > 0)
+    {
+        if (!dev->init_sim(pin)) 
+        {
+            return ESP_FAIL;
+        }
     }
-#endif
     // now create the DCE from our already existent device
     dce = NetDCE_Factory::create<NetModule>(&dce_config, uart_dte, netif, dev);
     if (dce == nullptr) {

@@ -25,6 +25,6 @@
 #define DI_PINS 4	// Number of digital input pins
 #define DO_PINS 6	// Number of digital output pins
 #define AI_PINS 4	// Number of analog input pins
-// #define WIFI_STATUS_PIN 43 //LED Pin on the Dev board
+#define WIFI_STATUS_PIN 43 //LED Pin on the Dev board
 #define FACTORY_RESET_PIN 2 // Clear NVRAM
 

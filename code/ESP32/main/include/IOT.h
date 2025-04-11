@@ -52,6 +52,13 @@ namespace EDGEBOX
         String _SSID;
         String _WiFi_Password;
         String _APN;
+        String _SIM_Username;
+        String _SIM_Password;
+        String _SIM_PIN;
+        bool _useDHCP = false;
+        String _Static_IP;
+        String _Subnet_Mask;
+        String _Gateway_IP;
         bool _useMQTT = false;
         String _mqttServer;
         int16_t _mqttPort = 1883;

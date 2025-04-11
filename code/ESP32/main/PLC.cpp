@@ -109,8 +109,8 @@ namespace EDGEBOX
 				// logi("Home Page Disconnected!");
 			} else if (type == WS_EVT_ERROR) {
 				loge("ws error");
-			} else if (type == WS_EVT_PONG) {
-            	logd("ws pong");
+			// } else if (type == WS_EVT_PONG) {
+            // 	logd("ws pong");
         	}
 		});
 	}

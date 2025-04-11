@@ -128,7 +128,17 @@ namespace EDGEBOX
 
 			fields.replace("{SSID}", _SSID);
 			fields.replace("{WiFi_Pw}", _WiFi_Password);
+			fields.replace("{dhcpChecked}", _useDHCP ? "checked" : "unchecked");
+
+			fields.replace("{ETH_SIP}", _Static_IP);
+			fields.replace("{ETH_SM}", _Subnet_Mask);
+			fields.replace("{ETH_GW}", _Gateway_IP);
+
 			fields.replace("{APN}", _APN);
+			fields.replace("{SIM_USERNAME}", _SIM_Username);
+			fields.replace("{SIM_PASSWORD}", _SIM_Password);
+			fields.replace("{SIM_PIN}", _SIM_PIN);
+
 			fields.replace("{mqttchecked}", _useMQTT ? "checked" : "unchecked");
 			fields.replace("{mqttServer}", _mqttServer);
 			fields.replace("{mqttPort}", String(_mqttPort));
@@ -171,6 +181,27 @@ namespace EDGEBOX
 			if (request->hasParam("APN", true)) {
 				_APN = request->getParam("APN", true)->value().c_str();
 			}
+			if (request->hasParam("SIM_USERNAME", true)) {
+				_SIM_Username = request->getParam("SIM_USERNAME", true)->value().c_str();
+			}
+			if (request->hasParam("SIM_PASSWORD", true)) {
+				_SIM_Password = request->getParam("SIM_PASSWORD", true)->value().c_str();
+			}
+			if (request->hasParam("SIM_PIN", true)) {
+				_SIM_PIN = request->getParam("SIM_PIN", true)->value().c_str();
+			}
+
+			_useDHCP =  request->hasParam("dhcpCheckbox", true);
+			if (request->hasParam("ETH_SIP", true)) {
+				_Static_IP = request->getParam("ETH_SIP", true)->value().c_str();
+			}
+			if (request->hasParam("ETH_SM", true)) {
+				_Subnet_Mask = request->getParam("ETH_SM", true)->value().c_str();
+			}
+			if (request->hasParam("ETH_GW", true)) {
+				_Gateway_IP = request->getParam("ETH_GW", true)->value().c_str();
+			}
+
 			_useMQTT =  request->hasParam("mqttCheckbox", true);
 			if (request->hasParam("mqttServer", true)) {
 				_mqttServer = request->getParam("mqttServer", true)->value().c_str();
@@ -203,11 +234,41 @@ namespace EDGEBOX
 		String page = network_config_top;
 		page.replace("{n}", _AP_SSID);
 		page.replace("{v}", CONFIG_VERSION);
-		String network = network_settings;
+		String network = network_settings_fs;
 		network.replace("{AP_SSID}", _AP_SSID);
 		network.replace("{AP_Pw}", _AP_Password.length() > 0 ? "******" : "");
-		network.replace("{SSID}", _SSID);
-		network.replace("{WiFi_Pw}", _WiFi_Password.length() > 0 ? "******" : "");
+		if (_NetworkSelection == WiFiMode)
+		{
+			String wifi = network_settings_wifi;
+			wifi.replace("{SSID}", _AP_SSID);
+			wifi.replace("{WiFi_Pw}", _AP_Password.length() > 0 ? "******" : "");
+			network.replace("{NET}", wifi);
+		}
+		else if (_NetworkSelection == EthernetMode)
+		{
+			String eth;
+			if (_useDHCP)
+			{
+				eth = network_settings_eth_dhcp;
+			}
+			else 
+			{
+				eth = network_settings_eth_st;
+				eth.replace("{ETH_SIP}", _Static_IP);
+				eth.replace("{ETH_SM}", _Subnet_Mask);
+				eth.replace("{ETH_GW}", _Gateway_IP);
+			}
+			network.replace("{NET}", eth);
+		}
+		else if (_NetworkSelection == ModemMode)
+		{
+			String modem = network_settings_modem;
+			modem.replace("{APN}", _APN);
+			modem.replace("{SIM_USERNAME}", _SIM_Username);
+			modem.replace("{SIM_PASSWORD}", _SIM_Password.length() > 0 ? "******" : "");
+			modem.replace("{SIM_PIN}", _SIM_PIN);
+			network.replace("{NET}", modem);
+		}
 		page += network;
 		if (_useMQTT)
 		{
@@ -263,6 +324,14 @@ namespace EDGEBOX
 			_SSID = iot["SSID"].isNull() ? "" : iot["SSID"].as<String>();
 			_WiFi_Password = iot["WiFi_Pw"].isNull() ? "" : iot["WiFi_Pw"].as<String>();
 			_APN = iot["APN"].isNull() ? "" : iot["APN"].as<String>();
+			_SIM_Username = iot["SIM_USERNAME"].isNull() ? "" : iot["SIM_USERNAME"].as<String>();
+			_SIM_Password = iot["SIM_PASSWORD"].isNull() ? "" : iot["SIM_PASSWORD"].as<String>();
+			_SIM_PIN = iot["SIM_PIN"].isNull() ? "" : iot["SIM_PIN"].as<String>();
+			_useDHCP = iot["useDHCP"].isNull() ? false : iot["useDHCP"].as<bool>();
+			_Static_IP = iot["ETH_SIP"].isNull() ? "" : iot["ETH_SIP"].as<String>();
+			_Subnet_Mask = iot["ETH_SM"].isNull() ? "" : iot["ETH_SM"].as<String>();
+			_Gateway_IP = iot["ETH_GW"].isNull() ? "" : iot["ETH_GW"].as<String>();
+
 			_useMQTT = iot["useMQTT"].isNull() ? false : iot["useMQTT"].as<bool>();
 			_mqttServer = iot["mqttServer"].isNull() ? "" : iot["mqttServer"].as<String>();
 			_mqttPort = iot["mqttPort"].isNull() ? 1883 : iot["mqttPort"].as<uint16_t>();
@@ -286,6 +355,14 @@ namespace EDGEBOX
 		iot["SSID"] = _SSID;
 		iot["WiFi_Pw"] = _WiFi_Password;
 		iot["APN"] = _APN;
+		iot["SIM_USERNAME"] = _SIM_Username;
+		iot["SIM_PASSWORD"] = _SIM_Password;
+		iot["SIM_PIN"] = _SIM_PIN;
+		iot["useDHCP"] = _useDHCP;
+		iot["ETH_SIP"] = _Static_IP;
+		iot["ETH_SM"] = _Subnet_Mask;
+		iot["ETH_GW"] = _Gateway_IP;
+
 		iot["useMQTT"] = _useMQTT;
 		iot["mqttServer"] = _mqttServer;
 		iot["mqttPort"] = _mqttPort;
@@ -377,7 +454,7 @@ namespace EDGEBOX
 		{
 			_webLog.process();
 		}
-#ifdef WIFI_STATUS_PIN
+#if APP_LOG_LEVEL == ARDUHAL_LOG_LEVEL_NONE
 		// handle blink led, fast : NotConnected slow: AP connected On: Station connected
 		if (_networkState != OnLine)
 		{
@@ -765,6 +842,7 @@ namespace EDGEBOX
 			if ((ret = spi_bus_add_device(SPI2_HOST, &spi_devcfg, &spi_handle)) != ESP_OK)
 			{
 				loge("spi_bus_add_device failed");
+				return ret;
 			}
 			eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(spi_handle);
 			w5500_config.int_gpio_num = ETH_INT;
@@ -775,6 +853,7 @@ namespace EDGEBOX
 			if ((ret = esp_eth_driver_install(&eth_config_spi, &_eth_handle)) != ESP_OK)
 			{
 				loge("esp_eth_driver_install failed");
+				return ret;
 			}
 			if ((ret = esp_eth_ioctl(_eth_handle, ETH_CMD_S_MAC_ADDR, local_mac_1)) != ESP_OK) // set mac address
 			{
@@ -783,14 +862,33 @@ namespace EDGEBOX
 			esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH(); // Initialize the Ethernet interface
 			_netif = esp_netif_new(&cfg);
 			assert(_netif);
+			if (!_useDHCP)
+			{
+				esp_netif_dhcpc_stop(_netif);
+				esp_netif_ip_info_t ipInfo;
+				IPAddress ip;
+				ip.fromString(_Static_IP);
+				ipInfo.ip.addr =  static_cast<uint32_t>(ip);
+				ip.fromString(_Subnet_Mask);
+				ipInfo.netmask.addr = static_cast<uint32_t>(ip);
+				ip.fromString(_Gateway_IP);
+				ipInfo.gw.addr = static_cast<uint32_t>(ip);
+				if ((ret = esp_netif_set_ip_info(_netif, &ipInfo)) != ESP_OK)
+				{
+					loge("esp_netif_set_ip_info failed: %d", ret);
+					return ret;
+				}
+			}
 			eth_netif_glue = esp_eth_new_netif_glue(_eth_handle);
 			if ((ret = esp_netif_attach(_netif, eth_netif_glue)) != ESP_OK)
 			{
 				loge("esp_netif_attach failed");
+				return ret;
 			}
 			if ((ret = esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, &on_ip_event, this)) != ESP_OK)
 			{
 				loge("esp_event_handler_register IP_EVENT->IP_EVENT_ETH_GOT_IP failed");
+				return ret;
 			}
 			if ((ret = esp_eth_start(_eth_handle)) != ESP_OK)
 			{
@@ -822,7 +920,11 @@ namespace EDGEBOX
 		esp_netif_config_t ppp_netif_config = ESP_NETIF_DEFAULT_PPP(); // Initialize lwip network interface in PPP mode
 		_netif = esp_netif_new(&ppp_netif_config);
 		assert(_netif);
-		ESP_ERROR_CHECK(modem_init_network(_netif, _APN.c_str())); // Initialize the PPP network and register for IP event
+		ESP_ERROR_CHECK(modem_init_network(_netif, _APN.c_str(), _SIM_PIN.c_str())); // Initialize the PPP network and register for IP event
+		if (_SIM_Username.length() > 0)
+		{
+			esp_netif_ppp_set_auth(_netif, NETIF_PPP_AUTHTYPE_PAP, _SIM_Username.c_str(), _SIM_Password.c_str());
+		}
 		ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event, this));
 		int retryCount = 3;
 		while (retryCount-- != 0)
