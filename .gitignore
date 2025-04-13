@@ -31,3 +31,4 @@
 *.out
 *.app
 /code/ESP32/build
+code/ESP32/main/include/cert.pem
