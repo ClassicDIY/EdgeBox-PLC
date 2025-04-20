@@ -111,19 +111,19 @@ const char home_html[] PROGMEM = R"rawliteral(
 	)rawliteral";
 
 	const char app_settings_fields[] PROGMEM = R"rawliteral(
-    
 	<fieldset id="app" class="fs"><legend>Application</legend>
 		<p><div class="fld">Digital Inputs: {digitalInputs}</div></p>
 		<p><div class="fld">Analog Inputs: {analogInputs}</div></p>
+		<p><div class="fld">4 mA => {4ma}</div></p>
+		<p><div class="fld">20 mA => {20ma}</div></p>
 	</fieldset>
-
 	)rawliteral";
 
 	const char app_config_fields[] PROGMEM = R"rawliteral(
-
 	<fieldset id="app" class="fs"><legend>Application</legend>
 		<p><div class="fld"><label for="digitalInputs">Digital Inputs</label><input type="number" id="digitalInputs" name="digitalInputs" value="{digitalInputs}" step="1" min="0" max="12" ></div></p>
 		<p><div class="fld"><label for="analogInputs">Analog Inputs</label><input type="number" id="analogInputs" name="analogInputs" value="{analogInputs}" step="1" min="0" max="4"></div></p>
+		<p><div class="fld"><label for="4ma">4 mA => </label><input type="number" id="4ma" name="4ma" value="{4ma}" step="1" min="-1024" max="1024"></div></p>
+		<p><div class="fld"><label for="20ma">20 mA => </label><input type="number" id="20ma" name="20ma" value="{20ma}" step="1" min="-1024" max="1024"></div></p>
 	</fieldset>
-
 	)rawliteral";

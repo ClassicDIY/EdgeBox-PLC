@@ -24,8 +24,8 @@ namespace EDGEBOX
 		void onMqttConnect();
 		void onMqttMessage(char* topic, JsonDocument& doc);
 		void onNetworkConnect();
-		void addNetworkSettings(String& page);
-		void addNetworkConfigs(String& page);
+		void addApplicationSettings(String& page);
+		void addApplicationConfigs(String& page);
 		void onSubmitForm(AsyncWebServerRequest *request);
 	    void onSaveSetting(JsonDocument& doc);
     	void onLoadSetting(JsonDocument& doc);
@@ -51,6 +51,8 @@ namespace EDGEBOX
 
 		int16_t _digitalInputs = DI_PINS;
 		int16_t _analogInputs = AI_PINS;
+		int16_t _4ma = 0; // transpose 4-20 values to 0 -> 100 by default
+		int16_t _20ma = 100;
 		unsigned long _lastHeap = 0;
 	};
 }

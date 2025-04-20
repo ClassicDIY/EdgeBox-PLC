@@ -28,20 +28,24 @@ namespace EDGEBOX
 		return formattedString;
 	}
 
-	float AnalogSensor::Level()
+	float AnalogSensor::Level(int16_t min, int16_t max)
 	{
+		uint16_t delta = abs(max - min);
+		float inc = delta / 16.0; // (20 - 4 ma) / delta => increment from min to max
 		int16_t adcReading = ads.readADC_SingleEnded(_channel);
-		float percent = (adcReading * 100) / ADC_Resolution;
-		float averagePercent = AddReading(percent);
-		averagePercent = roundf(averagePercent* 100.0)/ 100.0; // round to 0 decimal place
+		float val = AddReading((adcReading * 100) / ADC_Resolution);
+		val -= 4.0;
+		if (val < 0) return 0.0; // minimum value is 4ma, not connected to 4-20 device!
+		val *= inc;
+		val = roundf(val*10.0)/10.0; // round to 1 decimal place
 		#ifdef LOG_SENSOR_VOLTAGE
 		if (_count++ > 100)
 		{
-			logd("Sensor Reading: %d percent: %f, averagePercent:%f", adcReading, percent , averagePercent);
+			logd("Sensor Reading: %d inc: %d, val:%f", adcReading, inc , val);
 			_count = 0;
 		}
 		#endif
-		return averagePercent;
+		return val;
 	}
 
 	float AnalogSensor::AddReading(float val)

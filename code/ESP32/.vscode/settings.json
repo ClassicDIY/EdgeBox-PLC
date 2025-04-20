@@ -23,7 +23,8 @@
         "tuple": "cpp",
         "type_traits": "cpp",
         "utility": "cpp",
-        "*.inc": "cpp"
+        "*.inc": "cpp",
+        "*.pem": "cpp"
     },
     "idf.portWin": "COM21",
     "idf.customExtraVars": {

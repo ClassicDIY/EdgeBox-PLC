@@ -147,12 +147,15 @@ namespace EDGEBOX
 			fields.replace("{modbuschecked}", _useModbus ? "checked" : "unchecked");
 			fields.replace("{modbusPort}", String(_modbusPort));
 			fields.replace("{modbusID}", String(_modbusID));
+			fields.replace("{inputRegBase}", String(_input_register_base_addr));
+			fields.replace("{coilBase}", String(_coil_base_addr));
+			fields.replace("{discreteBase}", String(_discrete_input_base_addr));
 			Serial.println(fields.c_str());
 			String page = network_config_top;
 			page.replace("{n}", _AP_SSID);
 			page.replace("{v}", CONFIG_VERSION);
 			page += fields;
-			_iotCB->addNetworkConfigs(page);
+			_iotCB->addApplicationConfigs(page);
 			String apply_button = network_config_apply_button;
 			page += apply_button;
 			page += network_config_links;
@@ -222,6 +225,15 @@ namespace EDGEBOX
 			if (request->hasParam("modbusID", true)) {
 				_modbusID = request->getParam("modbusID", true)->value().toInt();
 			}
+			if (request->hasParam("inputRegBase", true)) {
+				_input_register_base_addr = request->getParam("inputRegBase", true)->value().toInt();
+			}
+			if (request->hasParam("coilBase", true)) {
+				_coil_base_addr = request->getParam("coilBase", true)->value().toInt();
+			}
+			if (request->hasParam("discreteBase", true)) {
+				_discrete_input_base_addr = request->getParam("discreteBase", true)->value().toInt();
+			}
 			_iotCB->onSubmitForm(request);
 			saveSettings();
 			SendNetworkSettings(request); });
@@ -284,9 +296,12 @@ namespace EDGEBOX
 			String modbus = modbus_settings;
 			modbus.replace("{modbusPort}", String(_modbusPort));
 			modbus.replace("{modbusID}", String(_modbusID));
+			modbus.replace("{inputRegBase}", String(_input_register_base_addr));
+			modbus.replace("{coilBase}", String(_coil_base_addr));
+			modbus.replace("{discreteBase}", String(_discrete_input_base_addr));
 			page += modbus;
 		}
-		_iotCB->addNetworkSettings(page);
+		_iotCB->addApplicationSettings(page);
 		page += network_settings_links;
 		request->send(200, "text/html", page);
 	}
@@ -340,6 +355,9 @@ namespace EDGEBOX
 			_useModbus = iot["useModbus"].isNull() ? false : iot["useModbus"].as<bool>();
 			_modbusPort = iot["modbusPort"].isNull() ? 502 : iot["modbusPort"].as<uint16_t>();
 			_modbusID = iot["modbusID"].isNull() ? 1 : iot["modbusID"].as<uint16_t>();
+			_input_register_base_addr = iot["inputRegBase"].isNull() ? INPUT_REGISTER_BASE_ADDRESS : iot["inputRegBase"].as<uint16_t>();
+			_coil_base_addr = iot["coilBase"].isNull() ? COIL_BASE_ADDRESS : iot["coilBase"].as<uint16_t>();
+			_discrete_input_base_addr = iot["discreteBase"].isNull() ? DISCRETE_BASE_ADDRESS : iot["discreteBase"].as<uint16_t>();
 			_iotCB->onLoadSetting(doc);
 		}
 	}
@@ -371,6 +389,9 @@ namespace EDGEBOX
 		iot["useModbus"] = _useModbus;
 		iot["modbusPort"] = _modbusPort;
 		iot["modbusID"] = _modbusID;
+		iot["inputRegBase"] = _input_register_base_addr;
+		iot["coilBase"] = _coil_base_addr;
+		iot["discreteBase"] = _discrete_input_base_addr;
 		_iotCB->onSaveSetting(doc);
 		String jsonString;
 		serializeJson(doc, jsonString);
@@ -420,6 +441,11 @@ namespace EDGEBOX
 			else
 			{
 				Serial.read(); // discard data
+			}
+			if ((now - _FlasherIPConfigStart) > FLASHER_TIMEOUT) // wait for flasher tool to send Wifi info
+			{ 
+				logd("Done waiting for flasher!");
+				setState(ApState); // switch to AP mode for AP_TIMEOUT
 			}
 		}
 		else if (_networkState == Boot) // have network selection, start with wifiAP for AP_TIMEOUT then STA mode

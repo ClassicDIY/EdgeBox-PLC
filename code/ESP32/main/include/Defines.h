@@ -11,6 +11,7 @@
 #define NC_BLINK_RATE 100
 // #define AP_TIMEOUT 1000
 #define AP_TIMEOUT 30000
+#define FLASHER_TIMEOUT 10000
 #define WS_CLIENT_CLEANUP 5000
 #define WIFI_CONNECTION_TIMEOUT 30000
 #define DEFAULT_AP_PASSWORD "12345678"
@@ -21,6 +22,10 @@
 
 #define ASYNC_WEBSERVER_PORT 80
 #define DNS_PORT 53
+
+#define INPUT_REGISTER_BASE_ADDRESS 1000
+#define COIL_BASE_ADDRESS 2000
+#define DISCRETE_BASE_ADDRESS 3000
 
 #define DI_PINS 4	// Number of digital input pins
 #define DO_PINS 6	// Number of digital output pins

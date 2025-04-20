@@ -13,7 +13,7 @@ namespace EDGEBOX
 		AnalogSensor(int channel);
 		~AnalogSensor();
 		std::string Channel();
-		float Level();
+		float Level(int16_t min, int16_t max);
 
 	private:
 		int _channel;

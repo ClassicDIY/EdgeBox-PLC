@@ -38,7 +38,9 @@ namespace EDGEBOX
         NetworkState getNetworkState() { return _networkState; }
         IOTCallbackInterface *IOTCB() { return _iotCB; }
         void registerMBWorkers(FunctionCode fc, MBSworker worker);
-
+        uint16_t InputRegisterBaseAddr() { return _input_register_base_addr; }
+        uint16_t CoilBaseAddr() { return _coil_base_addr; }
+        uint16_t DiscreteBaseAddr() { return _discrete_input_base_addr; }
         void GoOnline();
         
     private:
@@ -67,6 +69,9 @@ namespace EDGEBOX
         bool _useModbus = false;
         int16_t _modbusPort = 502;
         int16_t _modbusID = 1;
+        uint16_t _input_register_base_addr = INPUT_REGISTER_BASE_ADDRESS;
+		uint16_t _coil_base_addr = COIL_BASE_ADDRESS;
+		uint16_t _discrete_input_base_addr = DISCRETE_BASE_ADDRESS;
         bool _clientsConfigured = false;
         IOTCallbackInterface *_iotCB;
         u_int _uniqueId = 0; // unique id from mac address NIC segment
@@ -75,6 +80,7 @@ namespace EDGEBOX
         unsigned long _lastBootTimeStamp = millis();
         unsigned long _waitInAPTimeStamp = millis();
         unsigned long _NetworkConnectionStart = 0;
+        unsigned long _FlasherIPConfigStart = millis();
         char _willTopic[STR_LEN*2];
         char _rootTopicPrefix[STR_LEN];
         esp_mqtt_client_handle_t _mqtt_client_handle = 0;

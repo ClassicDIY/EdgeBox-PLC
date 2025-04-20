@@ -189,6 +189,9 @@ const char network_config_fields[] PROGMEM = R"rawliteral(
     <fieldset id="modbus" class="fs"><legend><label><input type="checkbox" id="modbusCheckbox" name="modbusCheckbox" onclick="modbusFieldset(this)" {modbuschecked}>Modbus</label></legend>
     <p><div class="fld"><label for="modbusPort">Modbus port</label><input type="number" id="modbusPort" name="modbusPort" value="{modbusPort}" step="1"></div></p>
     <p><div class="fld"><label for="modbusID">Modbus ID</label><input type="number" id="modbusID" name="modbusID" value="{modbusID}" step="1"></div></p>
+    <p><div class="fld"><label for="inputRegBase">Input Register Base Addess</label><input type="number" id="inputRegBase" name="inputRegBase" value="{inputRegBase}" step="1" min="0" max="65531"></div></p>
+    <p><div class="fld"><label for="coilBase">Coil Base Address</label><input type="number" id="coilBase" name="coilBase" value="{coilBase}" step="1" min="0" max="65529"></div></p>
+    <p><div class="fld"><label for="discreteBase">Discrete Base Address</label><input type="number" id="discreteBase" name="discreteBase" value="{discreteBase}" step="1" min="0" max="65531"></div></p>
     </fieldset>
 )rawliteral";
 
@@ -238,6 +241,9 @@ const char modbus_settings[] PROGMEM = R"rawliteral(
 <fieldset id="Modbus" class="fs"><legend>Modbus</legend>
     <p><div class="fld">Modbus Port: {modbusPort}</div></p>
     <p><div class="fld">Modbus ID: {modbusID}</div></p>
+    <p><div class="fld">Input Register Base Addess: {inputRegBase}</div></p>
+    <p><div class="fld">Coil Base Address: {coilBase}</div></p>
+    <p><div class="fld">Discrete Base Address: {discreteBase}</div></p>
 </fieldset>
 )rawliteral";
 

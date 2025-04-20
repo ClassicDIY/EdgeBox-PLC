@@ -10,19 +10,23 @@ namespace EDGEBOX
 	static AsyncWebSocket _webSocket("/ws_home");
 	IOT _iot = IOT();
 
-	void PLC::addNetworkSettings(String& page)
+	void PLC::addApplicationSettings(String& page)
 	{
 		String appFields = app_settings_fields;
 		appFields.replace("{digitalInputs}", String(_digitalInputs));
 		appFields.replace("{analogInputs}", String(_analogInputs));
+		appFields.replace("{4ma}", String(_4ma));
+		appFields.replace("{20ma}", String(_20ma));
 		page += appFields;
 	}
 
-	void PLC::addNetworkConfigs(String& page)
+	void PLC::addApplicationConfigs(String& page)
 	{
 		String appFields = app_config_fields;
 		appFields.replace("{digitalInputs}", String(_digitalInputs));
 		appFields.replace("{analogInputs}", String(_analogInputs));
+		appFields.replace("{4ma}", String(_4ma));
+		appFields.replace("{20ma}", String(_20ma));
 		page += appFields;
 	}
 
@@ -34,6 +38,12 @@ namespace EDGEBOX
 		if (request->hasParam("analogInputs", true)) {
 			_analogInputs = request->getParam("analogInputs", true)->value().toInt();
 		}
+		if (request->hasParam("4ma", true)) {
+			_4ma = request->getParam("4ma", true)->value().toInt();
+		}
+		if (request->hasParam("20ma", true)) {
+			_20ma = request->getParam("20ma", true)->value().toInt();
+		}
 	}
 
 	void PLC::onSaveSetting(JsonDocument& doc)
@@ -41,12 +51,17 @@ namespace EDGEBOX
 		JsonObject plc = doc["plc"].to<JsonObject>();
 		plc["digitalInputs"] = _digitalInputs;
 		plc["analogInputs"] = _analogInputs;
+		plc["4ma"] = _4ma;
+		plc["20ma"] = _20ma;
 	}
+
 	void PLC::onLoadSetting(JsonDocument& doc)
 	{
 		JsonObject plc = doc["plc"].as<JsonObject>();
 		_digitalInputs = plc["digitalInputs"].isNull() ? DI_PINS : plc["digitalInputs"].as<uint16_t>();
 		_analogInputs = plc["analogInputs"].isNull() ? AI_PINS : plc["analogInputs"].as<uint16_t>();
+		_4ma = plc["4ma"].isNull() ? 0 : plc["4ma"].as<uint16_t>();
+		_20ma = plc["20ma"].isNull() ? 100 : plc["20ma"].as<uint16_t>();
 	}
 
 	void PLC::setup()
@@ -126,6 +141,7 @@ namespace EDGEBOX
 			request.get(2, addr);
 			request.get(4, words);
 			logd("READ_INPUT_REGISTER %d %d[%d]", request.getFunctionCode(), addr, words);
+			addr -= _iot.InputRegisterBaseAddr();
 			if ((addr + words) > AI_PINS)
 			{
 				logw("READ_INPUT_REGISTER error: %d", (addr + words));
@@ -136,7 +152,7 @@ namespace EDGEBOX
 				response.add(request.getServerID(), request.getFunctionCode(), (uint8_t)(words * 2));
 				for (int i = addr; i < (addr + words); i++)
 				{
-					response.add((uint16_t)_AnalogSensors[i].Level());
+					response.add((uint16_t)_AnalogSensors[i].Level(_4ma, _20ma));
 				}
 			}
 			return response;
@@ -151,6 +167,7 @@ namespace EDGEBOX
 			request.get(2, start, numCoils);
 			logd("READ_COIL %d %d[%d]", request.getFunctionCode(), start, numCoils);
 			// Address overflow?
+			start -= _iot.CoilBaseAddr();
 			if ((start + numCoils) > DO_PINS)
 			{
 				logw("READ_COIL error: %d", (start + numCoils));
@@ -173,6 +190,7 @@ namespace EDGEBOX
 			uint16_t numDiscretes = 0;
 			request.get(2, start, numDiscretes);
 			logd("READ_DISCR_INPUT %d %d[%d]", request.getFunctionCode(), start, numDiscretes);
+			start -= _iot.DiscreteBaseAddr();
 			// Address overflow?
 			if ((start + numDiscretes) > DI_PINS)
 			{
@@ -197,6 +215,7 @@ namespace EDGEBOX
 			uint16_t state = 0;
 			request.get(2, start, state);
 			logd("WRITE_COIL %d %d:%d", request.getFunctionCode(), start, state);
+			start -= _iot.CoilBaseAddr();
 			// Is the coil number within the range of the coils?
 			if (start <= DO_PINS)
 			{
@@ -242,8 +261,9 @@ namespace EDGEBOX
 			uint16_t offset = 2; // Parameters start after serverID and FC
 			offset = request.get(offset, start, numCoils, numBytes);
 			logd("WRITE_MULT_COILS %d %d[%d]", request.getFunctionCode(), start, numCoils);
+			start -= _iot.CoilBaseAddr();
 			// Check the parameters so far
-			if (numCoils && start + numCoils <= DO_PINS)
+			if (start + numCoils <= DO_PINS)
 			{
 				// Packed coils will fit in our storage
 				if (numBytes == ((numCoils - 1) >> 3) + 1)
@@ -306,7 +326,7 @@ namespace EDGEBOX
 			}
 			for (int i = 0; i < _analogInputs; i++)
 			{
-				doc[_AnalogSensors[i].Channel()] = _AnalogSensors[i].Level();
+				doc[_AnalogSensors[i].Channel()] = _AnalogSensors[i].Level(_4ma, _20ma);
 			}
 			for (int i = 0; i < DO_PINS; i++)
 			{
@@ -330,7 +350,7 @@ namespace EDGEBOX
 				_lastMessagePublished = s;
 				_lastPublishTimeStamp = millis() + MQTT_PUBLISH_RATE_LIMIT;
 				_webSocket.textAll(s);
-				logd("Publish readings %s", s.c_str()); 
+				// logd("Publish readings %s", s.c_str()); 
 			}
 		}
 	}
