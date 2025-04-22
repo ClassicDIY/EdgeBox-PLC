@@ -10,65 +10,121 @@ namespace EDGEBOX
 	static AsyncWebSocket _webSocket("/ws_home");
 	IOT _iot = IOT();
 
-	void PLC::addApplicationSettings(String& page)
+	void PLC::addApplicationSettings(String &page)
 	{
 		String appFields = app_settings_fields;
 		appFields.replace("{digitalInputs}", String(_digitalInputs));
 		appFields.replace("{analogInputs}", String(_analogInputs));
-		appFields.replace("{4ma}", String(_4ma));
-		appFields.replace("{20ma}", String(_20ma));
+
+		String appConvs;
+		for (int i = 0; i < _analogInputs; i++)
+		{
+			String conv_flds(analog_conv_val);
+			conv_flds.replace("{An}", "A" + String(i));
+			conv_flds.replace("{minV}", String(_AnalogSensors[i].minV(), 1));
+			conv_flds.replace("{minT}", String(_AnalogSensors[i].minT(), 1));
+			conv_flds.replace("{maxV}", String(_AnalogSensors[i].maxV(), 1));
+			conv_flds.replace("{maxT}", String(_AnalogSensors[i].maxT(), 1));
+			appConvs += conv_flds;	
+		}
+		appFields.replace("{aconv}", appConvs);
 		page += appFields;
 	}
 
-	void PLC::addApplicationConfigs(String& page)
+	void PLC::addApplicationConfigs(String &page)
 	{
 		String appFields = app_config_fields;
+		
 		appFields.replace("{digitalInputs}", String(_digitalInputs));
 		appFields.replace("{analogInputs}", String(_analogInputs));
-		appFields.replace("{4ma}", String(_4ma));
-		appFields.replace("{20ma}", String(_20ma));
+		String appConvs;
+		String scriptConvs;
+		for (int i = 0; i < _analogInputs; i++)
+		{
+			String conv_flds(analog_conv_flds);
+			String conv_script(app_validateInputs);
+			conv_flds.replace("{An}", "A" + String(i));
+			conv_script.replace("{An}", "A" + String(i));
+			conv_flds.replace("{minV}", String(_AnalogSensors[i].minV(), 1));
+			conv_flds.replace("{minT}", String(_AnalogSensors[i].minT(), 1));
+			conv_flds.replace("{maxV}", String(_AnalogSensors[i].maxV(), 1));
+			conv_flds.replace("{maxT}", String(_AnalogSensors[i].maxT(), 1));
+			scriptConvs += conv_script;
+			appConvs += conv_flds;	
+		}
+		appFields.replace("{aconv}", appConvs);
 		page += appFields;
+		page.replace("{validateInputs}", scriptConvs);
 	}
 
 	void PLC::onSubmitForm(AsyncWebServerRequest *request)
 	{
-		if (request->hasParam("digitalInputs", true)) {
+		if (request->hasParam("digitalInputs", true))
+		{
 			_digitalInputs = request->getParam("digitalInputs", true)->value().toInt();
 		}
-		if (request->hasParam("analogInputs", true)) {
+		if (request->hasParam("analogInputs", true))
+		{
 			_analogInputs = request->getParam("analogInputs", true)->value().toInt();
 		}
-		if (request->hasParam("4ma", true)) {
-			_4ma = request->getParam("4ma", true)->value().toInt();
-		}
-		if (request->hasParam("20ma", true)) {
-			_20ma = request->getParam("20ma", true)->value().toInt();
+		for (int i = 0; i < _analogInputs; i++)
+		{
+			String ain = "A" + String(i);
+			if (request->hasParam(ain + "_minV", true))
+			{
+				_AnalogSensors[i].SetMinV(request->getParam(ain + "_minV", true)->value().toFloat());
+			}
+			if (request->hasParam(ain + "_minT", true))
+			{
+				_AnalogSensors[i].SetMinT(request->getParam(ain + "_minT", true)->value().toFloat());
+			}	
+			if (request->hasParam(ain + "_maxV", true))
+			{
+				_AnalogSensors[i].SetMaxV(request->getParam(ain + "_maxV", true)->value().toFloat());
+			}
+			if (request->hasParam(ain + "_maxT", true))
+			{
+				_AnalogSensors[i].SetMaxT(request->getParam(ain + "_maxT", true)->value().toFloat());
+			}		
 		}
 	}
 
-	void PLC::onSaveSetting(JsonDocument& doc)
+	void PLC::onSaveSetting(JsonDocument &doc)
 	{
 		JsonObject plc = doc["plc"].to<JsonObject>();
 		plc["digitalInputs"] = _digitalInputs;
 		plc["analogInputs"] = _analogInputs;
-		plc["4ma"] = _4ma;
-		plc["20ma"] = _20ma;
+		for (int i = 0; i < _analogInputs; i++)
+		{
+			String ain = "A" + String(i);
+			plc[ain + "_minV"] = _AnalogSensors[i].minV();
+			plc[ain + "_minT"] = _AnalogSensors[i].minT();
+			plc[ain + "_maxV"] = _AnalogSensors[i].maxV();
+			plc[ain + "_maxT"] = _AnalogSensors[i].maxT();
+		}
 	}
 
-	void PLC::onLoadSetting(JsonDocument& doc)
+	void PLC::onLoadSetting(JsonDocument &doc)
 	{
 		JsonObject plc = doc["plc"].as<JsonObject>();
 		_digitalInputs = plc["digitalInputs"].isNull() ? DI_PINS : plc["digitalInputs"].as<uint16_t>();
 		_analogInputs = plc["analogInputs"].isNull() ? AI_PINS : plc["analogInputs"].as<uint16_t>();
-		_4ma = plc["4ma"].isNull() ? 0 : plc["4ma"].as<uint16_t>();
-		_20ma = plc["20ma"].isNull() ? 100 : plc["20ma"].as<uint16_t>();
+		for (int i = 0; i < _analogInputs; i++)
+		{
+			String ain = "A" + String(i);
+			plc[ain + "_minV"].isNull() ? _AnalogSensors[i].SetMinV(1.0) : _AnalogSensors[i].SetMinV(plc[ain + "_minV"].as<float>());
+			plc[ain + "_minT"].isNull() ? _AnalogSensors[i].SetMinT(0.0) : _AnalogSensors[i].SetMinT(plc[ain + "_minT"].as<float>());
+			plc[ain + "_maxV"].isNull() ? _AnalogSensors[i].SetMaxV(5.0) : _AnalogSensors[i].SetMaxV(plc[ain + "_maxV"].as<float>());
+			plc[ain + "_maxT"].isNull() ? _AnalogSensors[i].SetMaxT(100.0) : _AnalogSensors[i].SetMaxT(plc[ain + "_maxT"].as<float>());
+		}
 	}
 
 	void PLC::setup()
 	{
 		logd("setup");
 		_iot.Init(this, &_asyncServer);
-		_asyncServer.on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
+		_asyncServer.on("/", HTTP_GET, [this](AsyncWebServerRequest *request)
+						{
 			String page = home_html;
 			page.replace("{n}", _iot.getThingName().c_str());
 			page.replace("{v}", CONFIG_VERSION);
@@ -102,10 +158,9 @@ namespace EDGEBOX
 				s += "</div>";
 			}
 			page.replace("{digitalOutputs}", s);
-			request->send(200, "text/html", page);
-		});
+			request->send(200, "text/html", page); });
 		_asyncServer.addHandler(&_webSocket).addMiddleware([this](AsyncWebServerRequest *request, ArMiddlewareNext next)
-		{
+														   {
 			// ws.count() is the current count of WS clients: this one is trying to upgrade its HTTP connection
 			if (_webSocket.count() > 1) {
 			// if we have 2 clients or more, prevent the next one to connect
@@ -114,7 +169,8 @@ namespace EDGEBOX
 			// process next middleware and at the end the handler
 			next();
 		} });
-		_webSocket.onEvent([this](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+		_webSocket.onEvent([this](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len)
+						   {
 			(void)len;
 			if (type == WS_EVT_CONNECT) {
 				_lastMessagePublished.clear(); //force a broadcast
@@ -126,10 +182,9 @@ namespace EDGEBOX
 				loge("ws error");
 			// } else if (type == WS_EVT_PONG) {
             // 	logd("ws pong");
-        	}
-		});
+        	} });
 	}
-		
+
 	void PLC::onNetworkConnect()
 	{
 		// READ_INPUT_REGISTER
@@ -140,7 +195,7 @@ namespace EDGEBOX
 			uint16_t words = 0;
 			request.get(2, addr);
 			request.get(4, words);
-			logd("READ_INPUT_REGISTER %d %d[%d]", request.getFunctionCode(), addr, words);
+			// logd("READ_INPUT_REGISTER %d %d[%d]", request.getFunctionCode(), addr, words);
 			addr -= _iot.InputRegisterBaseAddr();
 			if ((addr + words) > AI_PINS)
 			{
@@ -152,7 +207,7 @@ namespace EDGEBOX
 				response.add(request.getServerID(), request.getFunctionCode(), (uint8_t)(words * 2));
 				for (int i = addr; i < (addr + words); i++)
 				{
-					response.add((uint16_t)_AnalogSensors[i].Level(_4ma, _20ma));
+					response.add((uint16_t)_AnalogSensors[i].Level());
 				}
 			}
 			return response;
@@ -307,15 +362,22 @@ namespace EDGEBOX
 		_iot.registerMBWorkers(WRITE_MULT_COILS, modbusFC0F);
 	}
 
+	void PLC::CleanUp()
+	{
+		_webSocket.cleanupClients(); // cleanup disconnected clients or too many clients
+	}
+
+	void PLC::Monitor()
+	{
+		for (int i = 0; i < _analogInputs; i++)
+		{
+			_AnalogSensors[i].Run();
+		}
+	}
+
 	void PLC::Process()
 	{
 		_iot.Run();
-		unsigned long now = millis();
-		if (now - _lastHeap >= WS_CLIENT_CLEANUP)
-		{
-			_lastHeap = now;
-			_webSocket.cleanupClients(); // cleanup disconnected clients or too many clients
-		}
 		if (_iot.getNetworkState() == OnLine)
 		{
 			JsonDocument doc;
@@ -326,7 +388,7 @@ namespace EDGEBOX
 			}
 			for (int i = 0; i < _analogInputs; i++)
 			{
-				doc[_AnalogSensors[i].Channel()] = _AnalogSensors[i].Level(_4ma, _20ma);
+				doc[_AnalogSensors[i].Channel()] = _AnalogSensors[i].Level();
 			}
 			for (int i = 0; i < DO_PINS; i++)
 			{
@@ -343,15 +405,10 @@ namespace EDGEBOX
 			{
 				return;
 			}
-			if (_lastPublishTimeStamp < millis()) // limit publish rate
-			{
-				_iot.PublishOnline();
-				_iot.Publish("readings", s.c_str(), false);
-				_lastMessagePublished = s;
-				_lastPublishTimeStamp = millis() + MQTT_PUBLISH_RATE_LIMIT;
-				_webSocket.textAll(s);
-				// logd("Publish readings %s", s.c_str()); 
-			}
+			_iot.PublishOnline();
+			_iot.Publish("readings", s.c_str(), false);
+			_lastMessagePublished = s;
+			_webSocket.textAll(s);
 		}
 	}
 
@@ -435,17 +492,20 @@ namespace EDGEBOX
 				coil -= 1;
 				if (coil >= 0 && coil < DO_PINS)
 				{
-    				String input = doc["state"];
+					String input = doc["state"];
 					input.toLowerCase();
-					if (input == "on" || input == "high" || input == "1") {
+					if (input == "on" || input == "high" || input == "1")
+					{
 						_Coils[coil].Set(HIGH);
 						logi("Write Coil %d HIGH", coil);
 					}
-					else if (input == "off" || input == "low" || input == "0") {
+					else if (input == "off" || input == "low" || input == "0")
+					{
 						_Coils[coil].Set(LOW);
 						logi("Write Coil %d LOW", coil);
 					}
-					else {
+					else
+					{
 						logw("Write Coil %d invalid state", coil);
 					}
 				}

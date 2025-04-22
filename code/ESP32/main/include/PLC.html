@@ -110,20 +110,67 @@ const char home_html[] PROGMEM = R"rawliteral(
 	</div></div></div></body></html>
 	)rawliteral";
 
-	const char app_settings_fields[] PROGMEM = R"rawliteral(
+const char app_settings_fields[] PROGMEM = R"rawliteral(
 	<fieldset id="app" class="fs"><legend>Application</legend>
 		<p><div class="fld">Digital Inputs: {digitalInputs}</div></p>
 		<p><div class="fld">Analog Inputs: {analogInputs}</div></p>
-		<p><div class="fld">4 mA => {4ma}</div></p>
-		<p><div class="fld">20 mA => {20ma}</div></p>
+		<div class="conv">
+			{aconv}
+		</div>
 	</fieldset>
 	)rawliteral";
 
-	const char app_config_fields[] PROGMEM = R"rawliteral(
+const char app_config_fields[] PROGMEM = R"rawliteral(
 	<fieldset id="app" class="fs"><legend>Application</legend>
 		<p><div class="fld"><label for="digitalInputs">Digital Inputs</label><input type="number" id="digitalInputs" name="digitalInputs" value="{digitalInputs}" step="1" min="0" max="12" ></div></p>
 		<p><div class="fld"><label for="analogInputs">Analog Inputs</label><input type="number" id="analogInputs" name="analogInputs" value="{analogInputs}" step="1" min="0" max="4"></div></p>
-		<p><div class="fld"><label for="4ma">4 mA => </label><input type="number" id="4ma" name="4ma" value="{4ma}" step="1" min="-1024" max="1024"></div></p>
-		<p><div class="fld"><label for="20ma">20 mA => </label><input type="number" id="20ma" name="20ma" value="{20ma}" step="1" min="-1024" max="1024"></div></p>
+		<div class="conv">
+			{aconv}
+		</div>
 	</fieldset>
+	)rawliteral";
+
+const char analog_conv_flds[] PROGMEM = R"rawliteral(
+
+<div class="mfld">
+	<div class="mfldmin">
+		<label for="{An}_min">{An} min V:</label>
+		<input type="number" id="{An}_min" name="{An}_min" value="{minV}" step="0.1" min="0" max="10" required>
+		<label for="{An}_min_t">=></label>
+		<input type="number" id="{An}_min_t" name="{An}_min_t" value="{minT}" required>
+	</div>
+	<div class="mfldmax">
+		<label for="{An}_max">{An} max V:</label>
+		<input type="number" id="{An}_max" name="{An}_max" value="{maxV}" step="0.1" min="0" max="10" required>
+		<label for="{An}_max_t">=></label>
+		<input type="number" id="{An}_max_t" name="{An}_max_t" value="{maxT}" required>
+	</div>
+</div>
+)rawliteral";
+
+const char analog_conv_val[] PROGMEM = R"rawliteral(
+
+<div class="mfld">
+	<div class="mfldmin">
+		<div> {An} min V: {minV} => {minT} </div>
+	</div>
+	<div class="mfldmax">
+		<div> {An} max V: {maxV} => {maxT} </div>
+	</div>
+</div>
+)rawliteral";
+
+const char app_validateInputs[] PROGMEM = R"rawliteral(
+	const {An}_minval = parseFloat(document.getElementById('{An}_min').value);
+	const {An}_maxval = parseFloat(document.getElementById('{An}_max').value);
+	if ({An}_minval >= {An}_maxval) {
+		alert('The {An} min must be lower than {An} max.');
+		return false;
+	}
+	const {An}_min_tval = parseFloat(document.getElementById('{An}_min_t').value);
+	const {An}_max_tval = parseFloat(document.getElementById('{An}_max_t').value);
+	if ({An}_min_tval >= {An}_max_tval) {
+		alert('The {An} min => must be lower than {An} => max.');
+		return false;
+	}
 	)rawliteral";

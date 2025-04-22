@@ -6,6 +6,8 @@
 #include <time.h>
 #include <Wire.h>
 #include <Adafruit_ADS1X15.h>
+#include <Thread.h>
+#include <ThreadController.h>
 #include "RTClib.h"
 #include "main.h"
 #include "Log.h"
@@ -17,6 +19,10 @@ static Main my_main;
 PLC _plc = PLC();
 RTC_PCF8563 rtc;
 Adafruit_ADS1115 ads; /* Use this for the 16-bit version */
+ThreadController _controller = ThreadController();
+Thread *_workerThread1 = new Thread();
+Thread *_workerThread2 = new Thread();
+Thread *_workerThread3 = new Thread();
 
 esp_err_t Main::setup()
 {
@@ -53,13 +59,24 @@ esp_err_t Main::setup()
     logi("Date Time: %s", now.timestamp().c_str());
 
 	_plc.setup();
+	// Configure main worker thread
+	_workerThread1->onRun([]() { _plc.CleanUp(); });
+	_workerThread1->setInterval(5000);
+	_controller.add(_workerThread1);
+	_workerThread2->onRun([]() { _plc.Monitor(); });
+	_workerThread2->setInterval(200);
+	_controller.add(_workerThread2);
+	_workerThread3->onRun([]() { _plc.Process(); });
+	_workerThread3->setInterval(200);
+	_controller.add(_workerThread3);
 	logd("Setup Done");
 	return ret;
 }
 
 void Main::loop()
 {
-	_plc.Process();
+	// _plc.Process();
+	_controller.run();
 }
 
 extern "C" void app_main(void)

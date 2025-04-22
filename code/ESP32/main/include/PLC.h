@@ -20,6 +20,8 @@ namespace EDGEBOX
 	public:
 		PLC() {};
 		void setup();
+		void CleanUp();
+		void Monitor();
 		void Process();
 		void onMqttConnect();
 		void onMqttMessage(char* topic, JsonDocument& doc);
@@ -29,7 +31,7 @@ namespace EDGEBOX
 		void onSubmitForm(AsyncWebServerRequest *request);
 	    void onSaveSetting(JsonDocument& doc);
     	void onLoadSetting(JsonDocument& doc);
-		
+
 	protected:
 		boolean PublishDiscoverySub(const char *component, const char *entityName, const char *jsonElement, const char *device_class, const char *unit_of_meas, const char *icon = "");
 		bool ReadyToPublish() {
@@ -51,8 +53,6 @@ namespace EDGEBOX
 
 		int16_t _digitalInputs = DI_PINS;
 		int16_t _analogInputs = AI_PINS;
-		int16_t _4ma = 0; // transpose 4-20 values to 0 -> 100 by default
-		int16_t _20ma = 100;
 		unsigned long _lastHeap = 0;
 	};
 }

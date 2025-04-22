@@ -71,6 +71,10 @@ const char network_config_top[] PROGMEM = R"rawliteral(
           modbusFieldset(document.getElementById("modbusCheckbox"));
           dhcpCheck(document.getElementById("dhcpCheckbox"));
 		}
+        function validateInputs() {
+            {validateInputs}
+            return true;
+        }
     </script>
 <style>
 
@@ -115,6 +119,37 @@ const char network_config_top[] PROGMEM = R"rawliteral(
             flex: 1;
             width: 50%;
         }
+        .mfld {
+			display: flex;
+			gap: 10px;
+			align-items: center;
+            text-align: right;
+            font-size:.8em;
+		}
+        .conv {
+			display: flex;
+            flex-direction: column;
+			align-items: center;
+		}
+        .mfld label {
+            width: 25%;
+            text-align: right;
+            margin-right: 0px;
+        }
+        .mfld input[type="number"] {
+            flex: 1;
+            text-align: center;
+            width: 25%;
+        }
+        .mfldmin {
+			align-items: left;
+            margin-right: 5px;
+		}
+        .mfldmax {
+			align-items: right;
+            margin-left: 10px;
+		}
+
         button{
             border:0;
             border-radius:0.3rem;
@@ -131,7 +166,7 @@ const char network_config_top[] PROGMEM = R"rawliteral(
             font-size: .6em;
         }
         #config {
-			width: 400px;
+			width: 530px;
 			margin: 0 auto;
             align: center;
 		}
@@ -149,7 +184,7 @@ const char network_config_top[] PROGMEM = R"rawliteral(
 )rawliteral";
 
 const char network_config_fields[] PROGMEM = R"rawliteral(
-    <form action='/submit' method='post'>
+    <form onsubmit="return validateInputs()" action='/submit' method='post'>
     <fieldset id="network" class="fs"><legend>Network</legend>
     <p><div class="fld"><label for="AP_SSID">AP SSID/Device Name</label><input type="text" id="AP_SSID" name="AP_SSID" value="{AP_SSID}" required maxlength="32"></div></p>
     <p><div class="fld"><label for="AP_Pw">AP/admin Password</label><input type="text" id="AP_Pw" name="AP_Pw" value="{AP_Pw}" minlength="8" required maxlength="32"></div></p>

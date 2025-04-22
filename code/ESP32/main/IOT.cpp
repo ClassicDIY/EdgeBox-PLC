@@ -281,6 +281,10 @@ namespace EDGEBOX
 			modem.replace("{SIM_PIN}", _SIM_PIN);
 			network.replace("{NET}", modem);
 		}
+		else
+		{
+			network.replace("{NET}", "No network selected");
+		}
 		page += network;
 		if (_useMQTT)
 		{
@@ -509,7 +513,7 @@ namespace EDGEBOX
 		_pwebServer->begin();
 		_webLog.begin(_pwebServer);
 		_OTA.begin(_pwebServer);
-		if (_networkState > APMode)
+		if (_networkState > ApState)
 		{
 			if (_NetworkSelection == EthernetMode || _NetworkSelection == WiFiMode)
 			{
@@ -610,7 +614,6 @@ namespace EDGEBOX
 	{
 		auto event = (esp_mqtt_event_handle_t)event_data;
 		esp_mqtt_client_handle_t client = event->client;
-		int msg_id;
 		JsonDocument doc;
 		switch ((esp_mqtt_event_id_t)event_id)
 		{
@@ -620,7 +623,7 @@ namespace EDGEBOX
 			sprintf(buf, "%s/cmnd/#", _rootTopicPrefix);
 			esp_mqtt_client_subscribe(client, buf, 0);
 			IOTCB()->onMqttConnect();
-			msg_id = esp_mqtt_client_publish(client, _willTopic, "Offline", 0, 1, 0);
+			esp_mqtt_client_publish(client, _willTopic, "Offline", 0, 1, 0);
 			break;
 		case MQTT_EVENT_DISCONNECTED:
 			logw("Disconnected from MQTT");
