@@ -460,7 +460,7 @@ namespace EDGEBOX
 		}
 		else if (_networkState == ApState)
 		{
-			if (_AP_Connected == false) // if AP is connected, stay in AP mode
+			if (_AP_Connected == false) // if AP client is connected, stay in AP mode
 			{
 				if ((now - _waitInAPTimeStamp) > AP_TIMEOUT) // switch to selected network after waiting in APMode for AP_TIMEOUT duration
 				{ 
