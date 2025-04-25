@@ -57,10 +57,12 @@ namespace EDGEBOX
 			{
 			case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
 				logd("AP_STADISCONNECTED");
+				_AP_Connected = false;
 				GoOffline();
 			break;
 			case ARDUINO_EVENT_WIFI_AP_STAIPASSIGNED:
 				logd("AP_STAIPASSIGNED");
+				_AP_Connected = true;
 				GoOnline();
 			break;
 			case ARDUINO_EVENT_WIFI_STA_GOT_IP:
@@ -399,7 +401,7 @@ namespace EDGEBOX
 		_iotCB->onSaveSetting(doc);
 		String jsonString;
 		serializeJson(doc, jsonString);
-		Serial.println(jsonString.c_str());
+		// Serial.println(jsonString.c_str());
 		for (int i = 0; i < jsonString.length(); ++i)
 		{
 			EEPROM.write(i, jsonString[i]);
@@ -458,7 +460,7 @@ namespace EDGEBOX
 		}
 		else if (_networkState == ApState)
 		{
-			if (WiFi.isConnected() == false) // if AP is connected, stay in AP mode
+			if (_AP_Connected == false) // if AP is connected, stay in AP mode
 			{
 				if ((now - _waitInAPTimeStamp) > AP_TIMEOUT) // switch to selected network after waiting in APMode for AP_TIMEOUT duration
 				{ 
@@ -481,6 +483,7 @@ namespace EDGEBOX
 		}
 		else if (_networkState == OffLine) // went offline, try again...
 		{
+			logw("went offline, try again...");
 			setState(Connecting);
 		}
 		else if (_networkState == OnLine)
@@ -541,13 +544,19 @@ namespace EDGEBOX
 		_webLog.end();
 		_dnsServer.stop();
 		MDNS.end();
-		setState(OffLine);
+		if (_networkState == OnLine)
+		{
+			setState(OffLine);
+		}
+		
 	}
 
 	void IOT::setState(NetworkState newState)
 	{
 		NetworkState oldState = _networkState;
 		_networkState = newState;
+		logd("_networkState: %s", _networkState == Boot ? "Boot" : _networkState == ApState ? "ApState" : _networkState == Connecting ? "Connecting" : _networkState == OnLine ? "OnLine" : "OffLine");								
+
 		switch (newState)
 		{
 		case OffLine:
@@ -578,6 +587,7 @@ namespace EDGEBOX
 			_NetworkConnectionStart = millis();
 			if (_NetworkSelection == WiFiMode)
 			{			
+				logd("WiFiMode, trying to connect to %s", _SSID.c_str());
 				WiFi.setHostname(_AP_SSID.c_str());
 				WiFi.mode(WIFI_STA);
 				WiFi.begin(_SSID, _WiFi_Password);
@@ -913,8 +923,8 @@ namespace EDGEBOX
 					return ret;
 				}
 			}
-			eth_netif_glue = esp_eth_new_netif_glue(_eth_handle);
-			if ((ret = esp_netif_attach(_netif, eth_netif_glue)) != ESP_OK)
+			_eth_netif_glue = esp_eth_new_netif_glue(_eth_handle);
+			if ((ret = esp_netif_attach(_netif, _eth_netif_glue)) != ESP_OK)
 			{
 				loge("esp_netif_attach failed");
 				return ret;
@@ -994,20 +1004,38 @@ namespace EDGEBOX
 
 	void IOT::DisconnectModem()
 	{
-		modem_stop_network();
-		modem_deinit_network();
-		esp_netif_destroy(_netif);
-		ESP_ERROR_CHECK(esp_netif_deinit());
-		ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event));
+		if (digitalRead(MODEM_PWR_EN) == HIGH)
+		{
+			digitalWrite(MODEM_PWR_EN, LOW); // turn off power to the modem
+			modem_stop_network();
+			modem_deinit_network();
+			if (_netif != NULL)
+			{
+				esp_netif_destroy(_netif);
+				_netif = NULL;
+			}
+			ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event));
+		}
 	}
 
 	void IOT::DisconnectEthernet()
 	{
-        ESP_ERROR_CHECK(esp_eth_stop(_eth_handle));
-        ESP_ERROR_CHECK(esp_eth_del_netif_glue(eth_netif_glue));
-		esp_netif_destroy(_netif);
-		ESP_ERROR_CHECK(esp_netif_deinit());
-		ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event));
+		if (_eth_handle != NULL)
+		{
+			ESP_ERROR_CHECK(esp_eth_stop(_eth_handle));
+			_eth_handle = NULL;
+			if (_eth_netif_glue != NULL)
+			{
+				ESP_ERROR_CHECK(esp_eth_del_netif_glue(_eth_netif_glue));
+				_eth_netif_glue = NULL;
+			}
+			if (_netif != NULL)
+			{
+				esp_netif_destroy(_netif);
+				_netif = NULL;
+			}
+			ESP_ERROR_CHECK(esp_event_handler_unregister(IP_EVENT, ESP_EVENT_ANY_ID, on_ip_event));
+		}
 	}
 
 } // namespace EDGEBOX

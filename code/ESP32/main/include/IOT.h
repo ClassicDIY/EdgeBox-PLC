@@ -51,6 +51,7 @@ namespace EDGEBOX
         bool _blinkStateOn = false;
         String _AP_SSID = TAG;
         String _AP_Password = DEFAULT_AP_PASSWORD;
+        bool _AP_Connected = false;
         String _SSID;
         String _WiFi_Password;
         String _APN;
@@ -92,11 +93,11 @@ namespace EDGEBOX
         void HandleMQTT(int32_t event_id, void *event_data);
         void setState(NetworkState newState);
         void wakeup_modem(void);
-        esp_netif_t *_netif;
+        esp_netif_t *_netif = NULL;
         esp_err_t ConnectModem();
         void DisconnectModem();
-        esp_eth_handle_t _eth_handle;
-        esp_eth_netif_glue_handle_t eth_netif_glue;
+        esp_eth_handle_t _eth_handle = NULL;
+        esp_eth_netif_glue_handle_t _eth_netif_glue;
         esp_err_t ConnectEthernet();
         void DisconnectEthernet();
         void HandleIPEvent(int32_t event_id, void *event_data);
