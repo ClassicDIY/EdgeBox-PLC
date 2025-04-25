@@ -70,21 +70,21 @@ namespace EDGEBOX
 		for (int i = 0; i < _analogInputs; i++)
 		{
 			String ain = "A" + String(i);
-			if (request->hasParam(ain + "_minV", true))
+			if (request->hasParam(ain + "_min", true))
 			{
-				_AnalogSensors[i].SetMinV(request->getParam(ain + "_minV", true)->value().toFloat());
+				_AnalogSensors[i].SetMinV(request->getParam(ain + "_min", true)->value().toFloat());
 			}
-			if (request->hasParam(ain + "_minT", true))
+			if (request->hasParam(ain + "_min_t", true))
 			{
-				_AnalogSensors[i].SetMinT(request->getParam(ain + "_minT", true)->value().toFloat());
+				_AnalogSensors[i].SetMinT(request->getParam(ain + "_min_t", true)->value().toFloat());
 			}	
-			if (request->hasParam(ain + "_maxV", true))
+			if (request->hasParam(ain + "_max", true))
 			{
-				_AnalogSensors[i].SetMaxV(request->getParam(ain + "_maxV", true)->value().toFloat());
+				_AnalogSensors[i].SetMaxV(request->getParam(ain + "_max", true)->value().toFloat());
 			}
-			if (request->hasParam(ain + "_maxT", true))
+			if (request->hasParam(ain + "_max_t", true))
 			{
-				_AnalogSensors[i].SetMaxT(request->getParam(ain + "_maxT", true)->value().toFloat());
+				_AnalogSensors[i].SetMaxT(request->getParam(ain + "_max_t", true)->value().toFloat());
 			}		
 		}
 	}

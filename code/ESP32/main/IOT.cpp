@@ -399,7 +399,7 @@ namespace EDGEBOX
 		_iotCB->onSaveSetting(doc);
 		String jsonString;
 		serializeJson(doc, jsonString);
-		// Serial.println(jsonString.c_str());
+		Serial.println(jsonString.c_str());
 		for (int i = 0; i < jsonString.length(); ++i)
 		{
 			EEPROM.write(i, jsonString[i]);
@@ -458,10 +458,13 @@ namespace EDGEBOX
 		}
 		else if (_networkState == ApState)
 		{
-			if ((now - _waitInAPTimeStamp) > AP_TIMEOUT) // switch to selected network after waiting in APMode for AP_TIMEOUT duration
-			{ 
-				logd("Connecting to network: %d", _NetworkSelection);
-				setState(Connecting);
+			if (WiFi.isConnected() == false) // if AP is connected, stay in AP mode
+			{
+				if ((now - _waitInAPTimeStamp) > AP_TIMEOUT) // switch to selected network after waiting in APMode for AP_TIMEOUT duration
+				{ 
+					logd("Connecting to network: %d", _NetworkSelection);
+					setState(Connecting);
+				}
 			}
 			_dnsServer.processNextRequest();
 			_webLog.process();

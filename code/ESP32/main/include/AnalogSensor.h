@@ -20,6 +20,8 @@ namespace EDGEBOX
 		float maxV() { return _maxV; }
 		float maxT() { return _maxT; }		
 
+		// .00038 V per ADC count for 4-20mA => 2635 counts = 1V => 4mA, 13175 counts = 5V => 20mA
+		// max adc range 0-26350 for 0V -> 10V
 		void SetMinV(float minV) { _minV = minV; adcReadingMin = minV * 2635; }
 		void SetMinT(float minT) { _minT = minT; }
 		void SetMaxV(float maxV) { _maxV = maxV; adcReadingMax = maxV * 2635;}

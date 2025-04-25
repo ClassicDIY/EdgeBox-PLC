@@ -62,6 +62,6 @@ namespace EDGEBOX
 
 	float AnalogSensor::Level()
 	{
-		return roundf((((_rollingSum / _numberOfSummations) - adcReadingMin) * 100.0) / (adcReadingMax - adcReadingMin) * 10.0) / 10.0;
+		return roundf(((((_rollingSum / _numberOfSummations) - adcReadingMin) * (_maxT - _minT)) / (adcReadingMax - adcReadingMin) + _minT) * 10.0) / 10.0;
 	}
 } // namespace namespace EDGEBOX
